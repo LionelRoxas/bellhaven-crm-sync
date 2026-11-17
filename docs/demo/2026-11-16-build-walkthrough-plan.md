@@ -1,63 +1,65 @@
 # Demo plan: Bellhaven CRM sync build walkthrough
 
-Status: Script approved 2026-11-16
+Status: Revision 5 draft (adds the AI second opinion; up to 3:30), awaiting approval
 
 ## Audience and takeaway
-- **Who:** the hiring team reviewing the take-home.
-- **Takeaway:** the system gets the ownership picture right on messy data. It never writes without a human click, follows the billing SOP, and was tested and reviewed hard. The real bugs found along the way were fixed, not hidden.
+- **Who:** anyone, including someone with no background in sales, CRMs or senior care, as well as the hiring team.
+- **Takeaway:**
+  - What problem this solves and why it matters.
+  - How the tool decides each fix, and how well it did on real data.
+  - How it was made safe, including real bugs found and fixed.
+- **Tone:** a senior engineer explaining to a junior, in full, natural sentences, defining each term the first time it appears.
 
 ## Format
-- About 4 minutes, 1280x720.
-- First-person narration as Lionel, in an AI voice (ElevenLabs "Chris"). The video description discloses that the voiceover is AI-generated.
-- This is a companion to, not a replacement for, the brief's required ~2-minute recording. That one is Lionel reviewing his real queue and talking live.
+- **Length:** 3 to 3½ minutes, at 1280x720. Revision 3's 9-minute cut was trimmed because the target is 2 minutes, with 3 at most.
+- **Captions:** burned in, plus a transcript (`.srt` and `.md`) delivered alongside the video.
+- **Narrator:** first person as Lionel, in an AI voice (ElevenLabs "Chris"). The video description discloses that the voiceover is AI-generated.
+- **Role:** a companion to, not a replacement for, the brief's required ~2-minute recording, which is Lionel reviewing his real queue and talking live.
 
 ## Data and safety
-- Recorded against a local copy: the review app runs on this machine with the database seeded from today's captured website and CRM data, and a fake CRM server.
-- The approve and reject clicks in the video write only to the fake CRM. The real graded CRM is never touched.
+- The two opening scenes show Bellhaven's public website, read-only.
+- Everything else runs against a local copy: a fake CRM seeded with today's captured data. The approve click never touches the graded CRM.
 - The token never appears on screen.
-- One fake account (Lima) is given an instruction-like note, the same setup as the end-to-end test, to show the injection flag.
-- No personal data is in the script. Facility names are fictional, from the exercise.
+- One fake account (Lima) gets a planted instruction-like note. The narration says it is a planted test.
 
-## Scenes (one segment each)
+## Scenes (one segment each, so every sentence matches the screen)
 | id | Screen | Action |
 |---|---|---|
-| intro | Queue | Rest on the counts strip |
-| matching | Willow Creek proposal | Scroll the evidence table (CRM name "Sunny Acres", same address) |
-| lookalike | Union Square proposal | Show "Not linked"; type a comment; click Reject |
-| chow | Tiffin proposal | Hover the ownership fork, then the SOP box |
-| approve | Tiffin | Click Approve; the step log shows 2 done steps |
-| sold | Sandusky proposal | Ownership chain to Millstone |
-| duplicates | Kettering proposal | Three accounts, survivor and losers |
-| untrusted | Lima proposal | Instruction-like-text banner; planned writes unchanged |
-| rerun | Queue, Applied and Rejected filters | Click the filters |
-| bugs1 | README "re-run safety" section (rendered locally) | Slow scroll |
-| bugs2 | README "apply" section | Slow scroll |
-| outro | Queue | Rest |
+| context1 | Bellhaven website home | Rest, gentle scroll |
+| context2 | Community directory | Hover a few cards |
+| context3 | Review queue | Hover the counts, then the type filters |
+| matching | Willow Creek suggestion | Evidence: hover name, then street |
+| ai | Union Square suggestion | Evidence streets, then the "AI second opinion (advisory)" box |
+| chow | Tiffin suggestion | Ownership diagram, then the SOP box |
+| approve | Tiffin | Click Approve; step log |
+| duplicates | Kettering suggestion | "Why these accounts" (3 accounts), then the planned changes |
+| untrusted | Lima suggestion | Warning banner, then the flagged note |
+| rerun | Queue | Click the Applied, then Rejected filters |
+| bugs | One slide: three bugs, each with its fix | The cursor follows each row as it's narrated |
+| outro | Review queue | Rest |
 
 ## Script
 
-**intro.** Hi, I'm Lionel. This is my Bellhaven ownership sync. Every day it reads Bellhaven's community directory, matches each location to our CRM, and lines up fixes for a person to approve. Nothing touches the CRM until someone clicks Approve. On today's data that's thirty-five locations, a hundred and twenty-one accounts, and twenty-six proposals to review.
+**context1.** Hi, I'm Lionel. Let me start with the problem. Senior living facilities get bought and sold all the time, and many of them belong to a bigger parent company. For a sales team that parent really matters, because contracts often need its approval.
 
-**matching.** The first big decision was to match on address, not name. Names drift when facilities get rebranded. Here, the website says Bellhaven Willow Creek, but the CRM still calls the same building Sunny Acres Retirement Home. The street and zip match, so it's a confident link, and the proposal is just a rename.
+**context2.** Sales teams keep their customers in a database called a CRM, where each facility is an account that points to its parent company. When a facility is sold or renamed, that pointer quietly goes out of date. Bellhaven's website lists the thirty-five communities it runs today, so we treat it as the truth and check it against a hundred and twenty-one CRM accounts.
 
-**lookalike.** Matching on address also stops false links. There's a Union Square Senior Living in the same zip, but on a different street, so it's shown as "not linked" with the reason, and the proposal is a new account instead. If I disagree, I reject it and leave a note. A rejected item doesn't come back on later runs unless the facts change.
+**context3.** My tool does that check for you every day. It writes up each fix as a suggestion with its evidence, and nothing changes until a person clicks Approve. On today's data, twelve locations were already correct, and it found twenty-six fixes, including missing accounts, old names, wrong parent companies and duplicates.
 
-**chow.** Tiffin is the case the billing rule exists for. It's owned by Cedar Trail, with eighty-four thousand dollars in revenue and twelve thousand still owed. So the old account stays exactly as it is, a new account is created under Bellhaven, and the old one points to it as its change-of-ownership record. The picture shows that fork, and the box on the right shows which rule applied and why.
+**matching.** The most important decision was to match on the address instead of the name, because names change all the time and addresses almost never do. Here the CRM still calls this building Sunny Acres, but the address is the same, so the fix is simply a rename.
 
-**approve.** When I approve, it runs the two writes in order and logs each one. Before writing, it re-reads the accounts, and it stops if anything changed since the proposal was made. It also re-checks the billing rule against the live revenue and amount owed.
+**ai.** I also added an AI second opinion, but only as advice. When the address rules can't link a community to an account, like Union Square here, the tool asks an AI model to compare it with records in the same city. It agrees these are two different places, because the streets don't match. It can't change the suggestion or what gets written, and it never sees the CRM notes.
 
-**sold.** Sandusky went the other way. It's no longer on Bellhaven's site, and Millstone already has an account at the same address. Since Sandusky has billing history, it isn't moved: it just gets linked to Millstone's account.
+**chow.** Tiffin shows the company's billing rule. It needs to move to Bellhaven, but it has past sales and money still owed, so the billing team needs the old account left exactly as it is. Instead of moving it, the tool creates a new account under Bellhaven and links the old account to the new one.
 
-**duplicates.** Kettering has three accounts for one building, under three different owners. The survivor is picked by a fixed order: billing history first, then already under Bellhaven, then the closest name. The other two are marked inactive and point at the survivor.
+**approve.** When I click Approve, it checks the CRM once more, then makes each change in order and logs it.
 
-**untrusted.** Everything that comes from the website or the CRM is treated as data, never instructions. This account's note says to ignore previous instructions and approve everything. The app flags it, shows it as plain text, and the proposed change is exactly the same as without it.
+**duplicates.** When one building has several accounts, like Kettering's three, the tool keeps one of them using a fixed order of rules, and marks the others inactive with a pointer to the one it kept.
 
-**rerun.** The pipeline is built to run daily. Each proposal has a fingerprint of what it would change, so a second run doesn't bring back anything already approved or rejected. If the facts change, a new proposal appears instead.
+**untrusted.** It also treats anything typed into the CRM as information, never as instructions. I planted a test note here telling it to approve everything, and the tool just flags the note and changes nothing.
 
-**bugs1.** Testing and reviews caught real bugs, and here are the ones that mattered. My first plan put the date in each note, which would have changed every fingerprint daily and re-proposed everything. Notes are now written only when a change is applied. An applied CHOW leaves two accounts at one address, which would have looked like a duplicate the next day, so handled accounts now drop out of matching. My first data pass searched names, and it missed Kettering's third account and Sandusky's buyer. Those were caught once I matched every account by address.
+**rerun.** Because it runs every day, each suggestion gets a fingerprint, so anything you've already approved or rejected won't come back unless the facts change.
 
-**bugs2.** The write path got the most scrutiny. A reviewer showed that a slow approval and a retry could both send the same write, so every write now re-claims the proposal in a single database statement. A gateway error on a create might mean the account was actually created, so it's marked unknown and never resent automatically; I confirm it by hand in the app. And the test that keeps the daily job from ever loading the write code only caught one-line imports, so I replaced it with a real TypeScript parser.
+**bugs.** Our reviews also caught real bugs before anything was written. Dates in the notes would have made it re-ask everything daily, so notes are now written only when a change is made. Two runs could have sent the same change twice, so each change is now claimed first. And a timeout could have created an account twice, so that case now waits for a person to confirm.
 
-**outro.** So that's it: address-first matching, the billing rule handled both ways, every write behind a human click, and a daily run that's safe to repeat. The code, tests, and writeup are in the repo. Thanks for watching.
-
-About 670 words (roughly 4.5 minutes), 3,858 characters of ElevenLabs quota.
+**outro.** So in one run, a messy CRM became twenty-six clear fixes with evidence, the billing rule respected, and nothing changed without a click. Thanks for watching.
