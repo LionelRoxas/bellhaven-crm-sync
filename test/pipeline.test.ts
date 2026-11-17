@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb, type Db } from '@/store/db'
 import { fingerprint } from '@/store/fingerprint'
-import { runPipeline } from '@/sync/pipeline'
+import { isShortScrape, runPipeline } from '@/sync/pipeline'
 import { classify } from '@/sync/classify'
 import { FakeCrm } from './fake-crm'
 import { fixtureFetcher } from './helpers/site'
@@ -23,6 +23,7 @@ beforeEach(() => {
   crm = new FakeCrm()
 })
 afterEach(() => {
+  vi.useRealTimers()
   db.close()
   rmSync(dir, { recursive: true, force: true })
 })
@@ -38,6 +39,45 @@ const deps = (over: Record<string, unknown> = {}) => ({
 const run = (over: Record<string, unknown> = {}) => runPipeline(deps(over))
 const limaRow = (status?: string) =>
   db.listProposals({ status: status as never }).find((p) => p.locationSlug === LIMA && p.type === 'reparent')
+
+describe('short-scrape guard', () => {
+  test('aborts at or below 80% of the last good run (28 of 35 aborts, 29 passes)', () => {
+    expect(isShortScrape(28, 35)).toBe(true)
+    expect(isShortScrape(29, 35)).toBe(false)
+    expect(isShortScrape(0, null)).toBe(true)
+    expect(isShortScrape(5, null)).toBe(false)
+  })
+
+  test('boundary through the pipeline: 17 locations vs a last run of 21 passes, vs 22 aborts', async () => {
+    await run()
+    const full = fixtureFetcher().fetchText
+    const page1Only = (path: string) => full(path.startsWith('/communities?page=') ? '/communities?page=1' : path)
+    const seed = (n: number) => {
+      const id = db.startRun()
+      db.finishRun(id, { locations: n, accounts: 121, created: 0, refreshed: 0, suppressed: 0, superseded: 0 })
+    }
+    seed(21)
+    await expect(run({ fetchText: page1Only })).resolves.toMatchObject({ locations: 17 })
+    seed(22)
+    await expect(run({ fetchText: page1Only })).rejects.toThrow(/Short scrape: 17 locations vs 22/)
+  })
+})
+
+describe('run row closing', () => {
+  test('the original error is rethrown even if closing the run row fails', async () => {
+    const bad = { ...db, finishRun: () => { throw new Error('disk gone') } }
+    await expect(run({ db: bad, parentName: 'No Such Parent' })).rejects.toThrow(/exactly one parent/)
+  })
+
+  test('a failing success-path close reports that proposals were written', async () => {
+    const bad = {
+      ...db,
+      finishRun: () => { throw new Error('disk gone') },
+    }
+    await expect(run({ db: bad })).rejects.toThrow(/roposals were written but the run row could not be closed/)
+    expect(db.listProposals()).toHaveLength(38)
+  })
+})
 
 describe('pipeline', () => {
   test('first run stores 38 rows, second run refreshes them all', async () => {
@@ -59,9 +99,12 @@ describe('pipeline', () => {
   })
 
   test('fingerprint is stable across runs on different dates', async () => {
-    await run({ now: () => new Date('2026-11-16T08:00:00Z') })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-16T08:00:00Z'))
+    await run()
     const before = db.listProposals().map((p) => p.fingerprint).sort()
-    const s = await run({ now: () => new Date('2026-12-25T08:00:00Z') })
+    vi.setSystemTime(new Date('2027-03-02T21:30:00Z'))
+    const s = await run()
     expect(db.listProposals().map((p) => p.fingerprint).sort()).toEqual(before)
     expect(s.created).toBe(0)
     expect(s.refreshed).toBe(38)
@@ -111,7 +154,7 @@ describe('pipeline', () => {
     const before = JSON.stringify(db.listProposals())
     const full = fixtureFetcher().fetchText
     const page1Only = (path: string) => full(path.startsWith('/communities?page=') ? '/communities?page=1' : path)
-    await expect(run({ fetchText: page1Only })).rejects.toThrow(/Short scrape: 1[67] locations vs 35/)
+    await expect(run({ fetchText: page1Only })).rejects.toThrow(/Short scrape: 17 locations vs 35 last run/)
     expect(JSON.stringify(db.listProposals())).toBe(before)
     expect(db.lastRunInfo()!.error).toMatch(/Short scrape/)
     expect(db.lastGoodRun()!.locations).toBe(35)
