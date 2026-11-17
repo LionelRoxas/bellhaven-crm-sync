@@ -7,3 +7,9 @@ data/
 .DS_Store
 .recon/
 .worktrees/
+test-results/
+playwright-report/
+.next/
+logs/
+next-env.d.ts
+*.tsbuildinfo
