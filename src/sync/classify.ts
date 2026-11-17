@@ -127,7 +127,13 @@ function locationDraft(loc: Location, accounts: Account[], bellhavenId: string):
 
   const ranked = rankSurvivor(strong.map((c) => c.account), bellhavenId, loc)
   const survivor = ranked[0]
-  const losers = ranked.slice(1)
+  // A CHOW whose new Bellhaven account already exists (e.g. a half-applied CHOW): link to it
+  // instead of creating a second one, and never mark it as a duplicate.
+  const existingTarget =
+    survivor.parent_id !== bellhavenId && sopBranch(survivor) === 'chow'
+      ? ranked.slice(1).find((a) => a.parent_id === bellhavenId) ?? null
+      : null
+  const losers = ranked.slice(1).filter((a) => a !== existingTarget)
   const involved = ranked
   const steps: Step[] = []
   const evidence = baseEvidence(loc, involved)
@@ -152,7 +158,16 @@ function locationDraft(loc: Location, accounts: Account[], bellhavenId: string):
   } else {
     evidence.sop = sopEvidence(survivor)
     const from = survivor.parent_name ? `from ${cleanText(survivor.parent_name)}` : 'from no parent'
-    if (sopBranch(survivor) === 'chow') {
+    if (existingTarget) {
+      steps.push({
+        method: 'PATCH',
+        accountId: survivor.account_id,
+        body: { chow_current_account: existingTarget.account_id },
+        noteReason: null,
+      })
+      type = 'chow'
+      summary = `Move to Bellhaven (CHOW): link the old one ${from} to the existing Bellhaven account ${existingTarget.account_id}`
+    } else if (sopBranch(survivor) === 'chow') {
       steps.push(
         { method: 'POST', accountId: null, body: newAccountBody(loc, bellhavenId), noteReason: `Created from ${loc.url}` },
         { method: 'PATCH', accountId: survivor.account_id, body: { chow_current_account: { $ref: 'created' } }, noteReason: null },

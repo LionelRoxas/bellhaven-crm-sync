@@ -210,6 +210,33 @@ describe('classify', () => {
     expect(bySlug('bellhaven-of-kettering').type).toBe('duplicate')
   })
 
+  test('half-applied CHOW: links the old account to the existing Bellhaven account, no second POST', () => {
+    const TIFFIN = '001U6RW32TY0WSXZZB'
+    const base = loadAccounts()
+    const old = base.find((a) => a.account_id === TIFFIN)!
+    const created: Account = {
+      ...old, account_id: '001BHTIFFIN0000001', parent_id: BELLHAVEN_ID,
+      parent_name: 'Bellhaven Senior Living (Parent Account)', lifetime_revenue: 0, outstanding_ar: 0,
+      note: '', created_by_candidate: true,
+    }
+    const d = classify(locations, [...base, created], BELLHAVEN_ID).find((x) => x.locationSlug === 'bellhaven-of-tiffin')!
+    expect(d.type).toBe('chow')
+    expect(d.steps).toEqual([
+      { method: 'PATCH', accountId: TIFFIN, body: { chow_current_account: created.account_id }, noteReason: null },
+    ])
+    expect(sorted(d.accountIds)).toEqual(sorted([TIFFIN, created.account_id]))
+    expect(d.summary).toContain(`existing Bellhaven account ${created.account_id}`)
+
+    // A third strong candidate not under Bellhaven is still a duplicate of the survivor.
+    const other: Account = { ...old, account_id: '001ZZZZZZZZZZZZZZZ', name: 'Tiffin Twin', lifetime_revenue: 0, outstanding_ar: 0 }
+    const d2 = classify(locations, [...base, created, other], BELLHAVEN_ID).find((x) => x.locationSlug === 'bellhaven-of-tiffin')!
+    expect(d2.type).toBe('chow')
+    expect(d2.steps.map((s) => [s.method, s.accountId, s.body])).toEqual([
+      ['PATCH', TIFFIN, { chow_current_account: created.account_id }],
+      ['PATCH', other.account_id, { duplicate_of_account: TIFFIN, status: 'Inactive' }],
+    ])
+  })
+
   test('applying every draft and re-running yields only confirmed', () => {
     const copy = loadAccounts()
     const byId = new Map(copy.map((a) => [a.account_id, a]))

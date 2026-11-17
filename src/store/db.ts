@@ -46,9 +46,11 @@ export type RunCounts = {
   refreshed: number
   suppressed: number
   superseded: number
+  /** New drafts not stored because they touch an `approved` or `failed` proposal's accounts or location. */
+  held: number
 }
 
-export type UpsertResult = Pick<RunCounts, 'created' | 'refreshed' | 'suppressed' | 'superseded'>
+export type UpsertResult = Pick<RunCounts, 'created' | 'refreshed' | 'suppressed' | 'superseded' | 'held'>
 
 export type RunInfo = RunCounts & {
   id: number
@@ -106,6 +108,7 @@ CREATE TABLE IF NOT EXISTS runs (
   refreshed INTEGER,
   suppressed INTEGER,
   superseded INTEGER,
+  held INTEGER,
   error TEXT
 );
 CREATE TABLE IF NOT EXISTS proposals (
@@ -197,6 +200,9 @@ export function openDb(path: string): Db {
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA busy_timeout = 5000')
   db.exec(SCHEMA)
+  // Databases created before the `held` counter existed.
+  const runCols = (db.prepare('PRAGMA table_info(runs)').all() as Row[]).map((c) => c.name)
+  if (!runCols.includes('held')) db.exec('ALTER TABLE runs ADD COLUMN held INTEGER')
 
   const q = (sql: string) => db.prepare(sql)
 
@@ -222,10 +228,10 @@ export function openDb(path: string): Db {
       }
       q(
         `UPDATE runs SET finished_at = ?, locations = ?, accounts = ?, created = ?, refreshed = ?,
-           suppressed = ?, superseded = ?, error = NULL WHERE id = ?`,
+           suppressed = ?, superseded = ?, held = ?, error = NULL WHERE id = ?`,
       ).run(
         at.toISOString(), result.locations, result.accounts, result.created,
-        result.refreshed, result.suppressed, result.superseded, id,
+        result.refreshed, result.suppressed, result.superseded, result.held, id,
       )
     },
 
@@ -237,7 +243,7 @@ export function openDb(path: string): Db {
     },
 
     upsertDrafts(runId, drafts) {
-      const out: UpsertResult = { created: 0, refreshed: 0, suppressed: 0, superseded: 0 }
+      const out: UpsertResult = { created: 0, refreshed: 0, suppressed: 0, superseded: 0, held: 0 }
       const find = q('SELECT id, status FROM proposals WHERE fingerprint = ?')
       const refresh = q(
         `UPDATE proposals SET evidence = ?, snapshot = ?, title = ?, summary = ?, confidence = ?, last_run = ?
@@ -246,6 +252,11 @@ export function openDb(path: string): Db {
       const revive = q(
         `UPDATE proposals SET status = ?, evidence = ?, snapshot = ?, title = ?, summary = ?, confidence = ?,
            last_run = ? WHERE id = ? AND status = 'superseded'`,
+      )
+      // A proposal superseded mid-apply (CRM changed before any step landed) may carry failed steps.
+      const resetSteps = q(
+        `UPDATE steps SET status = 'pending', error = NULL, response = NULL, attempted_at = NULL,
+           result_account_id = NULL WHERE proposal_id = ? AND status = 'failed'`,
       )
       const insP = q(
         `INSERT INTO proposals (id, fingerprint, type, status, location_slug, account_ids, title, summary,
@@ -256,6 +267,13 @@ export function openDb(path: string): Db {
         `INSERT INTO steps (proposal_id, idx, method, account_id, body, note_reason, status)
          VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       )
+      // Accounts and locations that an approved or failed proposal is (or may be) in the middle of
+      // changing. A new draft touching them would race that proposal (e.g. a second CHOW account).
+      const busy = (q(`SELECT account_ids, location_slug FROM proposals WHERE status IN ('approved','failed')`).all() as Row[])
+      const busyAccounts = new Set(busy.flatMap((r) => JSON.parse(r.account_ids as string) as string[]))
+      const busySlugs = new Set(busy.map((r) => r.location_slug as string | null).filter((x): x is string => !!x))
+      const touchesBusy = (d: ProposalDraft) =>
+        d.accountIds.some((a) => busyAccounts.has(a)) || (d.locationSlug !== null && busySlugs.has(d.locationSlug))
       const supersede = q(
         `UPDATE proposals SET status = 'superseded' WHERE status IN ('pending','info') AND last_run < ?`,
       )
@@ -276,11 +294,16 @@ export function openDb(path: string): Db {
             } else if (st === 'superseded') {
               // The finding came back after being superseded: bring it back for review.
               revive.run(status, evidence, snapshot, d.title, d.summary, d.confidence, runId, id)
+              resetSteps.run(id)
               out.created++
             } else {
               refresh.run(evidence, snapshot, d.title, d.summary, d.confidence, runId, id)
               out.refreshed++
             }
+            continue
+          }
+          if (touchesBusy(d)) {
+            out.held++
             continue
           }
           const id = freshId(fp)
@@ -390,6 +413,7 @@ export function openDb(path: string): Db {
         refreshed: (r.refreshed as number) ?? 0,
         suppressed: (r.suppressed as number) ?? 0,
         superseded: (r.superseded as number) ?? 0,
+        held: (r.held as number) ?? 0,
       }
     },
 

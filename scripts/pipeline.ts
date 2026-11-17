@@ -23,7 +23,8 @@ async function main() {
     })
     console.log(
       `run ${s.runId}: ${s.locations} locations, ${s.accounts} accounts, ` +
-        `${s.created} created, ${s.refreshed} refreshed, ${s.suppressed} suppressed, ${s.superseded} superseded`,
+        `${s.created} created, ${s.refreshed} refreshed, ${s.suppressed} suppressed, ${s.superseded} superseded, ` +
+        `${s.held} held (touch an approved or failed proposal)`,
     )
     const counts: Record<string, number> = {}
     for (const p of db.listProposals({ status: 'pending' })) counts[p.type] = (counts[p.type] ?? 0) + 1

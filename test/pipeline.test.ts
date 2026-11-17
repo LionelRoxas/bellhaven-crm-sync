@@ -54,7 +54,7 @@ describe('short-scrape guard', () => {
     const page1Only = (path: string) => full(path.startsWith('/communities?page=') ? '/communities?page=1' : path)
     const seed = (n: number) => {
       const id = db.startRun()
-      db.finishRun(id, { locations: n, accounts: 121, created: 0, refreshed: 0, suppressed: 0, superseded: 0 })
+      db.finishRun(id, { locations: n, accounts: 121, created: 0, refreshed: 0, suppressed: 0, superseded: 0, held: 0 })
     }
     seed(21)
     await expect(run({ fetchText: page1Only })).resolves.toMatchObject({ locations: 17 })

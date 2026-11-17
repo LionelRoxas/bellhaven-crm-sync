@@ -3,6 +3,7 @@ import type { Account } from '@/types'
 import type { Db, ProposalRow, StepRow } from '@/store/db'
 import { CrmError, type CrmReader } from '@/crm/read'
 import type { CrmWriter } from '@/crm/contracts'
+import { sopBranch } from '@/sync/rules'
 
 /*
  * The only code path that writes to the CRM. It runs a proposal's stored steps (never anything
@@ -17,6 +18,7 @@ export const MESSAGES = {
   decided: 'Already decided',
   refreshed: 'This proposal was refreshed since you opened it. Reload to see the latest.',
   changed: 'CRM changed since this proposal was made. Run the pipeline again.',
+  sopChanged: 'Billing data changed (revenue/AR); the SOP now applies differently. Run the pipeline again.',
   unknown: 'A previous write may or may not have landed. Check the CRM and mark the step done or failed.',
   applied: 'Applied',
   rejected: 'Rejected',
@@ -102,7 +104,8 @@ const cutoffIso = (now: Date) => new Date(now.getTime() - INTERRUPTED_AFTER_MS).
 
 /**
  * Runs an `approved` proposal's remaining steps (architecture §4 "Apply algorithm").
- * Leaves the proposal `applied` or `failed`.
+ * Leaves the proposal `applied` or `failed`, or `superseded` when the CRM changed before any of
+ * its steps landed (the next pipeline run then revives it with a fresh snapshot or replaces it).
  *
  * `claim` is the `decided_at` value the caller wrote when it claimed the proposal. Every status
  * change and every write-ahead is conditional on it, so a run that another run took over (an
@@ -120,6 +123,15 @@ export async function applyProposal(db: Db, crm: Crm, id: string, today: string,
   const stop = (message: string, markStep?: () => void): Result => {
     if (!db.transition(id, ['approved'], 'failed', owned)) return fail(MESSAGES.takenOver)
     markStep?.()
+    return fail(message)
+  }
+  /**
+   * The CRM no longer matches what the proposal was built on. With nothing written yet the proposal
+   * is `superseded`, so the next run can propose it again; once a step has landed it stays `failed`.
+   */
+  const stopChanged = (message: string): Result => {
+    if (steps.some((s) => s.status === 'done')) return stop(message)
+    if (!db.transition(id, ['approved'], 'superseded', owned)) return fail(MESSAGES.takenOver)
     return fail(message)
   }
 
@@ -147,9 +159,23 @@ export async function applyProposal(db: Db, crm: Crm, id: string, today: string,
       return stop(`Could not re-read account ${accountId}: ${detail}`)
     }
     if (!sameAsExpected(a, p.snapshot[accountId], expectedState(p, steps, accountId))) {
-      return stop(MESSAGES.changed)
+      return stopChanged(MESSAGES.changed)
     }
     current.set(accountId, a)
+  }
+
+  // 2b. Revenue/AR are not in the snapshot, so re-check the SOP branch on the fresh accounts.
+  for (const s of remaining) {
+    if (s.method !== 'PATCH' || !s.accountId) continue
+    const fresh = current.get(s.accountId)!
+    if ('parent_id' in s.body && sopBranch(fresh) === 'chow') return stopChanged(MESSAGES.sopChanged)
+    if (
+      (p.type === 'chow' || p.type === 'sold') &&
+      'chow_current_account' in s.body &&
+      sopBranch(fresh) !== 'chow'
+    ) {
+      return stopChanged(MESSAGES.sopChanged)
+    }
   }
 
   // 3–4. Run remaining steps in order; each result is stored before the next starts.

@@ -11,6 +11,7 @@ export type RunSummary = {
   refreshed: number
   suppressed: number
   superseded: number
+  held: number
 }
 
 export type PipelineDeps = {
