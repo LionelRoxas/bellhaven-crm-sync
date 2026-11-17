@@ -70,6 +70,8 @@ export type TransitionExtra = {
     lastRun?: number
     /** `decided_at` is NULL or strictly earlier than this ISO time. */
     decidedBefore?: string
+    /** `decided_at` equals this value exactly (the claim token of the run that owns the proposal). */
+    decidedAtIs?: string
   }
 }
 
@@ -83,6 +85,12 @@ export type Db = {
   getSteps(id: string): StepRow[]
   transition(id: string, from: Status[], to: Status, extra?: TransitionExtra): boolean
   updateStep(proposalId: string, idx: number, patch: StepPatch): void
+  /**
+   * Write-ahead for one CRM call, as a single conditional UPDATE: marks the step `unknown` only if it
+   * is still `pending`/`failed` and the proposal is still `approved` with `decided_at = claim`.
+   * False means another run owns the proposal (or the step) and nothing may be sent.
+   */
+  claimStep(proposalId: string, idx: number, claim: string, patch: { attemptedAt: string; response: string; error: string }): boolean
   lastRunInfo(): RunInfo | null
   close(): void
 }
@@ -330,6 +338,10 @@ export function openDb(path: string): Db {
         conds.push('last_run = ?')
         condArgs.push(m.lastRun)
       }
+      if (m.decidedAtIs !== undefined) {
+        conds.push('decided_at = ?')
+        condArgs.push(m.decidedAtIs)
+      }
       if (m.decidedBefore !== undefined) {
         conds.push('(decided_at IS NULL OR decided_at < ?)')
         condArgs.push(m.decidedBefore)
@@ -353,6 +365,15 @@ export function openDb(path: string): Db {
       }
       if (sets.length === 0) return
       q(`UPDATE steps SET ${sets.join(', ')} WHERE proposal_id = ? AND idx = ?`).run(...args, proposalId, idx)
+    },
+
+    claimStep(proposalId, idx, claim, patch) {
+      const r = q(
+        `UPDATE steps SET status = 'unknown', attempted_at = ?, response = ?, error = ?
+         WHERE proposal_id = ? AND idx = ? AND status IN ('pending','failed')
+           AND EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'approved' AND decided_at = ?)`,
+      ).run(patch.attemptedAt, patch.response, patch.error, proposalId, idx, proposalId, claim)
+      return Number(r.changes) > 0
     },
 
     lastRunInfo() {

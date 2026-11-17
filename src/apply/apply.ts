@@ -22,6 +22,7 @@ export const MESSAGES = {
   rejected: 'Rejected',
   notFound: 'Proposal not found',
   invalidRef: 'Invalid reference in step body',
+  takenOver: 'Another run took over this proposal. Reload to see the latest.',
 } as const
 
 export const INTERRUPTED_AFTER_MS = 5 * 60_000
@@ -30,7 +31,7 @@ const ACCOUNT_ID = /^[0-9A-Z]{18}$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_COMMENT = 500
 
-const fail = (message: string): Result => ({ ok: false, message })
+const fail = (message: string): { ok: false; message: string } => ({ ok: false, message })
 const done = (message: string): Result => ({ ok: true, message })
 
 /** What we record in `steps.response`: the exact body sent, and the created id for a POST. */
@@ -86,12 +87,12 @@ function sameAsExpected(actual: Account, snapshot: Partial<Account>, expected: P
 }
 
 /**
- * Whether an `approved` proposal is stuck: steps not all done and approved (or last claimed)
- * more than 5 minutes ago. Such a proposal can be resumed with `retry`.
+ * Whether an `approved` proposal is stuck: approved (or last claimed) more than 5 minutes ago.
+ * That includes one whose steps are all done but that never reached `applied` (a crash before the
+ * final transition). Such a proposal can be resumed with `retry`.
  */
-export function isInterrupted(p: ProposalRow, steps: StepRow[], now: Date = new Date()): boolean {
+export function isInterrupted(p: ProposalRow, _steps: StepRow[], now: Date = new Date()): boolean {
   if (p.status !== 'approved') return false
-  if (steps.every((s) => s.status === 'done')) return false
   if (p.decidedAt === null) return true
   const at = Date.parse(p.decidedAt)
   return Number.isNaN(at) || at < now.getTime() - INTERRUPTED_AFTER_MS
@@ -102,28 +103,36 @@ const cutoffIso = (now: Date) => new Date(now.getTime() - INTERRUPTED_AFTER_MS).
 /**
  * Runs an `approved` proposal's remaining steps (architecture §4 "Apply algorithm").
  * Leaves the proposal `applied` or `failed`.
+ *
+ * `claim` is the `decided_at` value the caller wrote when it claimed the proposal. Every status
+ * change and every write-ahead is conditional on it, so a run that another run took over (an
+ * Interrupted retry) stops without writing anything.
  */
-export async function applyProposal(db: Db, crm: Crm, id: string, today: string): Promise<Result> {
+export async function applyProposal(db: Db, crm: Crm, id: string, today: string, claim: string): Promise<Result> {
   if (!DATE.test(today)) return fail('Invalid date')
   const p = db.getProposal(id)
   if (!p) return fail(MESSAGES.notFound)
   if (p.status !== 'approved') return fail('Proposal is not approved')
+  if (p.decidedAt !== claim) return fail(MESSAGES.takenOver)
   const steps = db.getSteps(id)
-  const toFailed = () => db.transition(id, ['approved'], 'failed')
+  const owned = { ifMatch: { decidedAtIs: claim } }
+  /** Moves the proposal to `failed` while this run still owns it; otherwise reports the take-over. */
+  const stop = (message: string, markStep?: () => void): Result => {
+    if (!db.transition(id, ['approved'], 'failed', owned)) return fail(MESSAGES.takenOver)
+    markStep?.()
+    return fail(message)
+  }
 
   // 1. A step whose outcome is unknown must be checked by hand first.
-  if (steps.some((s) => s.status === 'unknown')) {
-    toFailed()
-    return fail(MESSAGES.unknown)
-  }
+  if (steps.some((s) => s.status === 'unknown')) return stop(MESSAGES.unknown)
 
   const remaining = steps.filter((s) => s.status !== 'done')
   for (const s of remaining) {
     const problem = stepProblem(s, steps, p)
     if (problem) {
-      db.updateStep(id, s.idx, { status: 'failed', error: problem, attemptedAt: new Date().toISOString() })
-      toFailed()
-      return fail(`Step ${s.idx + 1} failed: ${problem}`)
+      return stop(`Step ${s.idx + 1} failed: ${problem}`, () =>
+        db.updateStep(id, s.idx, { status: 'failed', error: problem, attemptedAt: new Date().toISOString() }),
+      )
     }
   }
 
@@ -134,13 +143,11 @@ export async function applyProposal(db: Db, crm: Crm, id: string, today: string)
     try {
       a = await crm.getAccount(accountId)
     } catch (e) {
-      toFailed()
       const detail = e instanceof CrmError ? e.detail : 'request failed'
-      return fail(`Could not re-read account ${accountId}: ${detail}`)
+      return stop(`Could not re-read account ${accountId}: ${detail}`)
     }
     if (!sameAsExpected(a, p.snapshot[accountId], expectedState(p, steps, accountId))) {
-      toFailed()
-      return fail(MESSAGES.changed)
+      return stop(MESSAGES.changed)
     }
     current.set(accountId, a)
   }
@@ -155,9 +162,10 @@ export async function applyProposal(db: Db, crm: Crm, id: string, today: string)
       if (typeof v === 'string') body[k] = v
       else if (isRef(v) && createdId) body[k] = createdId
       else {
-        db.updateStep(id, s.idx, { status: 'failed', error: MESSAGES.invalidRef, attemptedAt: new Date().toISOString() })
-        toFailed()
-        return fail(`Step ${s.idx + 1} failed: ${MESSAGES.invalidRef}`)
+        // Unreachable after the pre-check (the earlier POST must be done to get here); fail safe.
+        return stop(`Step ${s.idx + 1} failed: ${MESSAGES.invalidRef}`, () =>
+          db.updateStep(id, s.idx, { status: 'failed', error: MESSAGES.invalidRef, attemptedAt: new Date().toISOString() }),
+        )
       }
     }
     if (s.noteReason) {
@@ -166,14 +174,16 @@ export async function applyProposal(db: Db, crm: Crm, id: string, today: string)
       body.note = existing ? `${existing}\n${line}` : line
     }
 
-    // Write-ahead: if the process dies during the call, the step stays `unknown` and is never re-sent.
+    // Write-ahead in one conditional UPDATE: the step becomes `unknown` only while this run still
+    // owns the proposal. If the process dies during the call, the step stays `unknown` and is never
+    // re-sent; if another run took over, nothing is sent.
     const record: StepRecord = { sent: body }
-    db.updateStep(id, s.idx, {
-      status: 'unknown',
+    const mine = db.claimStep(id, s.idx, claim, {
       attemptedAt: new Date().toISOString(),
       response: JSON.stringify(record),
       error: 'Outcome unknown: the write was started but no response was recorded',
     })
+    if (!mine) return fail(MESSAGES.takenOver)
 
     try {
       if (s.method === 'POST') {
@@ -194,20 +204,23 @@ export async function applyProposal(db: Db, crm: Crm, id: string, today: string)
         db.updateStep(id, s.idx, { status: 'done', error: null })
       }
     } catch (e) {
-      if (e instanceof CrmError) {
-        // The CRM answered with an error: nothing landed, safe to retry later.
+      // A 4xx, or a 5xx on a PATCH, means the CRM refused it: safe to retry later. A 5xx on a POST
+      // may still have created the account, so it is handled like a network error.
+      if (e instanceof CrmError && !(s.method === 'POST' && e.status >= 500)) {
         db.updateStep(id, s.idx, { status: 'failed', error: e.message })
-        toFailed()
-        return fail(`Step ${s.idx + 1} failed: ${e.message}`)
+        return stop(`Step ${s.idx + 1} failed: ${e.message}`)
       }
-      // Network error, timeout, unreadable response or anything unexpected: the write may have landed.
-      db.updateStep(id, s.idx, { status: 'unknown', error: 'Outcome unknown: network error, timeout or unreadable response' })
-      toFailed()
-      return fail(MESSAGES.unknown)
+      // Network error, timeout, POST 5xx, unreadable response or anything unexpected: may have landed.
+      const why =
+        e instanceof CrmError
+          ? `Outcome unknown: ${e.message}`
+          : 'Outcome unknown: network error, timeout or unreadable response'
+      db.updateStep(id, s.idx, { status: 'unknown', error: why })
+      return stop(MESSAGES.unknown)
     }
   }
 
-  if (!db.transition(id, ['approved'], 'applied')) return fail('Proposal changed state during apply')
+  if (!db.transition(id, ['approved'], 'applied', owned)) return fail(MESSAGES.takenOver)
   return done(MESSAGES.applied)
 }
 
@@ -235,16 +248,17 @@ export async function approve(
   if (p.status !== 'pending') return fail(MESSAGES.decided)
   if (p.fingerprint !== input.fingerprint || p.lastRun !== input.lastRun) return fail(MESSAGES.refreshed)
 
+  const claim = now.toISOString()
   const claimed = db.transition(p.id, ['pending'], 'approved', {
     comment: c.comment,
-    decidedAt: now.toISOString(),
+    decidedAt: claim,
     ifMatch: { fingerprint: input.fingerprint, lastRun: input.lastRun },
   })
   if (!claimed) {
     // Lost a race: either another approval/rejection, or a pipeline refresh.
     return fail(db.getProposal(p.id)?.status === 'pending' ? MESSAGES.refreshed : MESSAGES.decided)
   }
-  return applyProposal(db, crm, p.id, today)
+  return applyProposal(db, crm, p.id, today, claim)
 }
 
 /** `pending → rejected`. Writes nothing to the CRM. */
@@ -270,31 +284,29 @@ export async function retry(db: Db, crm: Crm, id: string, today: string, now: Da
   if (p.status !== 'failed' && !interrupted) return fail('Only failed or interrupted proposals can be retried')
   if (steps.some((s) => s.status === 'unknown')) return fail(MESSAGES.unknown)
 
-  // Claim it with a conditional UPDATE so two retries can't run the same steps.
+  // Claim it with a conditional UPDATE; the new decided_at is this run's claim token.
+  const claim = now.toISOString()
   const claimed =
     p.status === 'failed'
-      ? db.transition(id, ['failed'], 'approved', { decidedAt: now.toISOString() })
+      ? db.transition(id, ['failed'], 'approved', { decidedAt: claim })
       : db.transition(id, ['approved'], 'approved', {
-          decidedAt: now.toISOString(),
+          decidedAt: claim,
           ifMatch: { decidedBefore: cutoffIso(now) },
         })
   if (!claimed) return fail('This proposal is already being applied')
-  return applyProposal(db, crm, id, today)
+  return applyProposal(db, crm, id, today, claim)
 }
 
-/**
- * After checking the CRM by hand, the reviewer records whether an `unknown` step landed.
- * A create step marked done needs the id of the account it created. The proposal stays (or
- * becomes) `failed`, so `retry` can then run what's left.
- */
-export function resolveUnknownStep(
+type Resolvable = { ok: true; p: ProposalRow; s: StepRow; needsId: boolean } | { ok: false; message: string }
+
+function checkResolvable(
   db: Db,
   id: string,
   idx: number,
   outcome: 'done' | 'failed',
-  createdAccountId?: string,
-  now: Date = new Date(),
-): Result {
+  createdAccountId: string | undefined,
+  now: Date,
+): Resolvable {
   const p = db.getProposal(id)
   if (!p) return fail(MESSAGES.notFound)
   if (outcome !== 'done' && outcome !== 'failed') return fail('Outcome must be done or failed')
@@ -302,19 +314,50 @@ export function resolveUnknownStep(
   const s = steps.find((x) => x.idx === idx)
   if (!s || s.status !== 'unknown') return fail('This step is not waiting for a check')
   if (p.status !== 'failed' && !isInterrupted(p, steps, now)) return fail('This proposal is still being applied')
-
   const needsId = outcome === 'done' && s.method === 'POST'
   if (needsId && (typeof createdAccountId !== 'string' || !ACCOUNT_ID.test(createdAccountId))) {
     return fail('Enter the id of the account the create step made (18 characters, 0-9 and A-Z)')
   }
   if (!needsId && createdAccountId !== undefined) return fail('Only a create step marked done takes an account id')
+  return { ok: true, p, s, needsId }
+}
 
-  if (p.status === 'approved') {
+/**
+ * After checking the CRM by hand, the reviewer records whether an `unknown` step landed.
+ * A create step marked done needs the id of the account it created, which must exist in the CRM.
+ * The proposal stays (or becomes) `failed`, so `retry` can then run what's left.
+ */
+export async function resolveUnknownStep(
+  db: Db,
+  crm: CrmReader,
+  id: string,
+  idx: number,
+  outcome: 'done' | 'failed',
+  createdAccountId?: string,
+  now: Date = new Date(),
+): Promise<Result> {
+  const first = checkResolvable(db, id, idx, outcome, createdAccountId, now)
+  if (!first.ok) return first
+
+  if (first.needsId) {
+    try {
+      await crm.getAccount(createdAccountId!)
+    } catch (e) {
+      if (e instanceof CrmError && e.status === 404) return fail(`Account ${createdAccountId} not found in the CRM.`)
+      const detail = e instanceof CrmError ? e.detail : 'request failed'
+      return fail(`Could not check account ${createdAccountId}: ${detail}`)
+    }
+  }
+
+  // State may have changed while we waited on the CRM: check again before writing.
+  const r = checkResolvable(db, id, idx, outcome, createdAccountId, now)
+  if (!r.ok) return r
+  if (r.p.status === 'approved') {
     const moved = db.transition(id, ['approved'], 'failed', { ifMatch: { decidedBefore: cutoffIso(now) } })
     if (!moved) return fail('This proposal is still being applied')
   }
 
-  const rec = readRecord(s)
+  const rec = readRecord(r.s)
   const resolved = { outcome, at: now.toISOString() }
   const response = JSON.stringify(rec ? { ...rec, resolved } : { resolved })
   if (outcome === 'done') {
@@ -322,7 +365,7 @@ export function resolveUnknownStep(
       status: 'done',
       response,
       error: null,
-      ...(needsId ? { resultAccountId: createdAccountId } : {}),
+      ...(r.needsId ? { resultAccountId: createdAccountId } : {}),
     })
     return done('Step marked done')
   }

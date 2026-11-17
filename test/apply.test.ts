@@ -9,8 +9,10 @@ import { applyProposal, approve, isInterrupted, reject, resolveUnknownStep, retr
 import { FakeCrm } from './fake-crm'
 import { fixtureFetcher } from './helpers/site'
 import { BELLHAVEN_ID, SITE_BASE } from './helpers/data'
+import { CrmError } from '@/crm/read'
 
 const TODAY = '2026-11-17'
+const TAKEOVER = 'Another run took over this proposal. Reload to see the latest.'
 const MSG = {
   decided: 'Already decided',
   refreshed: 'This proposal was refreshed since you opened it. Reload to see the latest.',
@@ -192,7 +194,7 @@ describe('approval gate', () => {
 
   test('applyProposal refuses anything that is not approved', async () => {
     const p = byAccount('stale', ALLIANCE)
-    expect((await applyProposal(db, crm, p.id, TODAY)).ok).toBe(false)
+    expect((await applyProposal(db, crm, p.id, TODAY, p.decidedAt ?? '')).ok).toBe(false)
     expect(db.getProposal(p.id)!.status).toBe('pending')
     expect(patches).toBe(0)
   })
@@ -343,10 +345,10 @@ describe('resolveUnknownStep', () => {
     // The POST landed in the CRM after all: simulate the reviewer finding it.
     const landed = await crm.createAccount({ name: 'Bellhaven of Tiffin', parent_id: BELLHAVEN_ID })
     posts = 0
-    expect(resolveUnknownStep(db, p.id, 0, 'done').ok).toBe(false)
-    expect(resolveUnknownStep(db, p.id, 0, 'done', 'bad id').ok).toBe(false)
-    expect(resolveUnknownStep(db, p.id, 1, 'done').ok).toBe(false) // step 1 is not unknown
-    expect(resolveUnknownStep(db, p.id, 0, 'done', landed.account_id).ok).toBe(true)
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'done')).ok).toBe(false)
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'done', 'bad id')).ok).toBe(false)
+    expect((await resolveUnknownStep(db, crm, p.id, 1, 'done')).ok).toBe(false) // step 1 is not unknown
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'done', landed.account_id)).ok).toBe(true)
     expect(db.getSteps(p.id)[0]).toMatchObject({ status: 'done', resultAccountId: landed.account_id })
     expect(db.getProposal(p.id)!.status).toBe('failed')
     expect(await retry(db, crm, p.id, TODAY)).toEqual({ ok: true, message: MSG.applied })
@@ -356,7 +358,7 @@ describe('resolveUnknownStep', () => {
 
   test('POST marked failed is re-sent on retry', async () => {
     const p = await unknownChow()
-    expect(resolveUnknownStep(db, p.id, 0, 'failed').ok).toBe(true)
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'failed')).ok).toBe(true)
     expect(db.getSteps(p.id)[0].status).toBe('failed')
     expect(await retry(db, crm, p.id, TODAY)).toEqual({ ok: true, message: MSG.applied })
     expect(posts).toBe(2)
@@ -372,15 +374,103 @@ describe('resolveUnknownStep', () => {
     }
     expect(await ok(p)).toEqual({ ok: false, message: MSG.unknown })
     crm.patchAccount = origPatch
-    expect(resolveUnknownStep(db, p.id, 0, 'done', '001UXEM0PCSUVRAYPF').ok).toBe(false) // PATCH takes no id
-    expect(resolveUnknownStep(db, p.id, 0, 'done').ok).toBe(true)
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'done', '001UXEM0PCSUVRAYPF')).ok).toBe(false) // PATCH takes no id
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'done')).ok).toBe(true)
     expect(await retry(db, crm, p.id, TODAY)).toEqual({ ok: true, message: MSG.applied })
   })
 
   test('refuses on unknown proposals and pending ones', async () => {
-    expect(resolveUnknownStep(db, 'p_nope', 0, 'done').ok).toBe(false)
+    expect((await resolveUnknownStep(db, crm, 'p_nope', 0, 'done')).ok).toBe(false)
     const p = byAccount('stale', ALLIANCE)
-    expect(resolveUnknownStep(db, p.id, 0, 'failed').ok).toBe(false)
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'failed')).ok).toBe(false)
+  })
+})
+
+describe('round 1 fixes', () => {
+  test('a stale run cannot write after an Interrupted retry took over', async () => {
+    const p = byAccount('chow', TIFFIN)
+    const t0 = new Date('2026-11-17T10:00:00Z')
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const read = crm.getAccount.bind(crm)
+    let reads = 0
+    crm.getAccount = async (id) => {
+      if (reads++ === 0) await gate
+      return read(id)
+    }
+    const first = approve(db, crm, { id: p.id, fingerprint: p.fingerprint, lastRun: p.lastRun }, TODAY, t0)
+    const second = await retry(db, crm, p.id, TODAY, new Date(t0.getTime() + 6 * 60_000))
+    expect(second).toEqual({ ok: true, message: MSG.applied })
+    release()
+    expect(await first).toEqual({ ok: false, message: TAKEOVER })
+    expect(posts).toBe(1)
+    expect(db.getProposal(p.id)!.status).toBe('applied')
+    expect(db.getSteps(p.id).map((s) => s.status)).toEqual(['done', 'done'])
+  })
+
+  test('the write-ahead claim needs the same claim token and a pending/failed step', () => {
+    const p = byAccount('chow', TIFFIN)
+    const rec = { attemptedAt: 'x', response: '{}', error: 'e' }
+    expect(db.claimStep(p.id, 0, 'T1', rec)).toBe(false) // still pending, not approved
+    db.transition(p.id, ['pending'], 'approved', { decidedAt: 'T1' })
+    expect(db.claimStep(p.id, 0, 'T0', rec)).toBe(false) // someone else's token
+    expect(db.getSteps(p.id)[0].status).toBe('pending')
+    expect(db.claimStep(p.id, 0, 'T1', rec)).toBe(true)
+    expect(db.getSteps(p.id)[0].status).toBe('unknown')
+    expect(db.claimStep(p.id, 0, 'T1', rec)).toBe(false) // already claimed
+  })
+
+  test('applyProposal with a stale claim token writes nothing', async () => {
+    const p = byAccount('chow', TIFFIN)
+    db.transition(p.id, ['pending'], 'approved', { decidedAt: '2026-11-17T10:06:00.000Z' })
+    expect(await applyProposal(db, crm, p.id, TODAY, '2026-11-17T10:00:00.000Z')).toEqual({ ok: false, message: TAKEOVER })
+    expect(posts + patches).toBe(0)
+    expect(db.getProposal(p.id)!.status).toBe('approved')
+  })
+
+  test('POST answered with HTTP 5xx is unknown: retry refused, no second POST', async () => {
+    const p = byAccount('chow', TIFFIN)
+    crm.failNext('POST', 'http500')
+    expect(await ok(p)).toEqual({ ok: false, message: MSG.unknown })
+    expect(db.getProposal(p.id)!.status).toBe('failed')
+    expect(db.getSteps(p.id)[0].status).toBe('unknown')
+    expect(await retry(db, crm, p.id, TODAY)).toEqual({ ok: false, message: MSG.unknown })
+    expect(posts).toBe(1)
+  })
+
+  test('POST answered with HTTP 4xx is failed and can be retried', async () => {
+    const p = byAccount('chow', TIFFIN)
+    const create = crm.createAccount
+    crm.createAccount = async () => { posts++; throw new CrmError(422, 'bad field') }
+    const r = await ok(p)
+    expect(r.ok).toBe(false)
+    expect(r.message).toContain('bad field')
+    expect(db.getSteps(p.id)[0].status).toBe('failed')
+    crm.createAccount = create
+    expect(await retry(db, crm, p.id, TODAY)).toEqual({ ok: true, message: MSG.applied })
+  })
+
+  test('an approved proposal with every step done is recoverable once Interrupted', async () => {
+    const p = byAccount('chow', TIFFIN)
+    expect(await ok(p)).toEqual({ ok: true, message: MSG.applied })
+    // Simulate a crash between the last step and the final transition.
+    raw(`UPDATE proposals SET status = 'approved', decided_at = ? WHERE id = ?`, '2026-11-17T10:00:00.000Z', p.id)
+    const t = (min: number) => new Date(Date.parse('2026-11-17T10:00:00Z') + min * 60_000)
+    expect((await retry(db, crm, p.id, TODAY, t(4))).ok).toBe(false)
+    expect(await retry(db, crm, p.id, TODAY, t(6))).toEqual({ ok: true, message: MSG.applied })
+    expect(db.getProposal(p.id)!.status).toBe('applied')
+    expect(posts).toBe(1)
+  })
+
+  test('resolving a POST as done checks the account exists in the CRM', async () => {
+    const p = byAccount('chow', TIFFIN)
+    crm.failNext('POST', 'network')
+    await ok(p)
+    expect(await resolveUnknownStep(db, crm, p.id, 0, 'done', '001NOTREAL00000000')).toEqual({
+      ok: false,
+      message: 'Account 001NOTREAL00000000 not found in the CRM.',
+    })
+    expect(db.getSteps(p.id)[0].status).toBe('unknown')
   })
 })
 
