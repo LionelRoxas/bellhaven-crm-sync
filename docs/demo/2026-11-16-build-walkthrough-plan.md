@@ -1,6 +1,6 @@
 # Demo plan: Bellhaven CRM sync build walkthrough
 
-Status: Revision 5 draft (adds the AI second opinion; up to 3:30), awaiting approval
+Status: Revision 6 draft (adds time spent and next steps; restyled app; up to 3:30), awaiting approval
 
 ## Audience and takeaway
 - **Who:** anyone, including someone with no background in sales, CRMs or senior care, as well as the hiring team.
@@ -36,6 +36,7 @@ Status: Revision 5 draft (adds the AI second opinion; up to 3:30), awaiting appr
 | untrusted | Lima suggestion | Warning banner, then the flagged note |
 | rerun | Queue | Click the Applied, then Rejected filters |
 | bugs | One slide: three bugs, each with its fix | The cursor follows each row as it's narrated |
+| future | One slide: time spent, then three next steps | The cursor follows each row as it's narrated |
 | outro | Review queue | Rest |
 
 ## Script
@@ -54,7 +55,7 @@ Status: Revision 5 draft (adds the AI second opinion; up to 3:30), awaiting appr
 
 **approve.** When I click Approve, it checks the CRM once more, then makes each change in order and logs it.
 
-**duplicates.** When one building has several accounts, like Kettering's three, the tool keeps one of them using a fixed order of rules, and marks the others inactive with a pointer to the one it kept.
+**duplicates.** When one building has several accounts, like Kettering's three, the tool keeps one by fixed rules and marks the others inactive with a pointer to the one it kept.
 
 **untrusted.** It also treats anything typed into the CRM as information, never as instructions. I planted a test note here telling it to approve everything, and the tool just flags the note and changes nothing.
 
@@ -62,4 +63,6 @@ Status: Revision 5 draft (adds the AI second opinion; up to 3:30), awaiting appr
 
 **bugs.** Our reviews also caught real bugs before anything was written. Dates in the notes would have made it re-ask everything daily, so notes are now written only when a change is made. Two runs could have sent the same change twice, so each change is now claimed first. And a timeout could have created an account twice, so that case now waits for a person to confirm.
 
-**outro.** So in one run, a messy CRM became twenty-six clear fixes with evidence, the billing rule respected, and nothing changed without a click. Thanks for watching.
+**future.** This took us two hours to design, plan and build. With more time, I'd add three things. First, a shared database with sign-in, so the whole team works from one queue. Second, a daily email of new suggestions, so nobody has to remember to check. And third, map-based address matching, so different spellings of the same street still line up.
+
+**outro.** So in one run, a messy CRM became twenty-six clear fixes, and nothing changed without a click. Thanks for watching.

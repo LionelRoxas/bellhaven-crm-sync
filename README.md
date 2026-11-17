@@ -166,4 +166,10 @@ Writes can't be rolled back automatically. Each proposal stores the prior values
 
 ## Time spent
 
-TBD by Lionel
+About 2 hours to design, plan and build.
+
+## With more time
+
+- **A shared database with sign-in.** Today the queue lives in a SQLite file on one machine. Hosted Postgres plus a login would let the daily run and the whole team work from one queue, and would let the GitHub Actions schedule replace the local cron job.
+- **A daily summary of new suggestions** by email or Slack, so nobody has to remember to open the app.
+- **Map-based address matching.** Geocoding each address to coordinates would line up different spellings of the same street without needing the AI second opinion.
