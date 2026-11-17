@@ -1,4 +1,9 @@
 # Daily Bellhaven sync, 06:00 on the machine that hosts the review app (the SQLite file lives there).
 # Re-running is safe: the pipeline only proposes (it cannot write to the CRM), and a finding that was
 # already decided or is still pending is not proposed again (fingerprints), so a missed or doubled run changes nothing.
-0 6 * * * cd /opt/bellhaven-crm-sync && npm run pipeline >> logs/pipeline.log 2>&1
+#
+# cron runs with a minimal PATH that usually lacks node and npm (nvm, Homebrew, /usr/local installs).
+# Set PATH below to include the directory of the Node 24 binary (check with `dirname "$(which node)"`),
+# or replace `npm` with its absolute path.
+PATH=/usr/local/bin:/usr/bin:/bin
+0 6 * * * cd /opt/bellhaven-crm-sync && mkdir -p logs && npm run pipeline >> logs/pipeline.log 2>&1

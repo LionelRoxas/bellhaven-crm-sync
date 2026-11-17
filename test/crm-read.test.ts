@@ -20,6 +20,14 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 describe('crm read client', () => {
+  test('a 422 detail array is formatted as loc: msg pairs', async () => {
+    const f = vi.fn(async () => json({ detail: [{ loc: ['path', 'id'], msg: 'bad id', type: 'x' }, { msg: 'no loc' }] }, 422))
+    await expect(httpReader(cfg, f as unknown as typeof fetch, noSleep).getAccount('001UXEM0PCSUVRAYPF')).rejects.toMatchObject({
+      status: 422,
+      detail: 'path.id: bad id; no loc',
+    })
+  })
+
   test('paginates until total', async () => {
     const urls: string[] = []
     const f = vi.fn(async (u: string | URL | Request) => {

@@ -293,8 +293,8 @@ function unlistedDraft(
 }
 
 /**
- * One draft per website location, plus one per Bellhaven child account that no location matches
- * (stale or sold). Pure and deterministic; proposes only, never writes.
+ * One draft per website location, plus one per non-Inactive Bellhaven child account that no
+ * location matches (stale or sold). Pure and deterministic; proposes only, never writes.
  */
 export function classify(
   locations: Location[],
@@ -310,7 +310,8 @@ export function classify(
   }
 
   const unlisted = accounts
-    .filter((a) => a.parent_id === bellhavenId && isMatchable(a) && !matched.has(a.account_id))
+    // Inactive accounts are already closed out: nothing to mark stale or sold.
+    .filter((a) => a.parent_id === bellhavenId && a.status !== 'Inactive' && isMatchable(a) && !matched.has(a.account_id))
     .sort((x, y) => (x.account_id < y.account_id ? -1 : x.account_id > y.account_id ? 1 : 0))
   for (const a of unlisted) {
     const d = unlistedDraft(a, accounts, bellhavenId, siteBase.replace(/\/+$/, ''))

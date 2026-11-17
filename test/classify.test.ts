@@ -278,6 +278,17 @@ describe('classify', () => {
     expect(stale.map((d) => d.accountIds[0])).toEqual(['0016PVXH4B25HWR7QE'])
   })
 
+  test('an Inactive Bellhaven account that is not on the website gets no stale or sold draft', () => {
+    const ALLIANCE = '00116ETS45BL7DTQP7'
+    const SANDUSKY = '001SXSF4ELF0Z2LGDM'
+    const accs = loadAccounts().map((a) =>
+      a.account_id === ALLIANCE || a.account_id === SANDUSKY ? { ...a, status: 'Inactive' } : a,
+    )
+    const out = classify(locations, accs, BELLHAVEN_ID)
+    expect(out.filter((d) => d.type === 'stale').map((d) => d.accountIds[0])).toEqual(['0016PVXH4B25HWR7QE'])
+    expect(out.filter((d) => d.type === 'sold')).toEqual([])
+  })
+
   test('create drafts surface suspicious text on weak candidates without changing anything', () => {
     const UNION = '001GNU41AVXZRLLJ9P'
     const accs = loadAccounts().map((a) =>

@@ -1,5 +1,5 @@
 import 'server-only'
-import { CrmError, assertAccountId } from './read'
+import { CrmError, assertAccountId, detailText } from './read'
 import { UnknownOutcomeError, type CrmWriter } from './contracts'
 
 export type { CrmWriter } from './contracts'
@@ -52,8 +52,7 @@ export function httpWriter(
     if (res.ok) return res
     let detail = res.statusText || 'request failed'
     try {
-      const b = (await res.json()) as { detail?: unknown }
-      if (typeof b?.detail === 'string') detail = b.detail
+      detail = detailText(await res.json()) ?? detail
     } catch {
       // keep statusText
     }

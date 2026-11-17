@@ -61,6 +61,26 @@ describe('crm write client', () => {
     expect(s.f).toHaveBeenCalledTimes(1)
   })
 
+  test('a 422 detail array (FastAPI validation errors) is formatted, not lost', async () => {
+    const body = {
+      detail: [
+        { loc: ['body', 'care_type'], msg: 'Input should be Skilled Nursing, Memory Care or Assisted Living', type: 'enum' },
+        { loc: ['body', 'billing_zip'], msg: 'String should match pattern', type: 'string_pattern_mismatch' },
+      ],
+    }
+    const { w } = mk(async () => json(body, 422))
+    await expect(w.patchAccount(ID, { care_type: 'X' })).rejects.toMatchObject({
+      status: 422,
+      detail:
+        'body.care_type: Input should be Skilled Nursing, Memory Care or Assisted Living; body.billing_zip: String should match pattern',
+    })
+    const long = { detail: Array.from({ length: 40 }, (_, i) => ({ loc: ['body', `f${i}`], msg: 'bad value here', type: 't' })) }
+    const e = await mk(async () => json(long, 422)).w.createAccount({}).catch((x) => x)
+    expect(e).toBeInstanceOf(CrmError)
+    expect(e.detail).toHaveLength(300)
+    expect(e.detail.startsWith('body.f0: bad value here; body.f1: bad value here')).toBe(true)
+  })
+
   test('PATCH targets the encoded account id and rejects malformed ids before calling', async () => {
     const { f, w } = mk(async () => json({ account_id: ID }))
     await w.patchAccount(ID, { status: 'Inactive' })

@@ -40,6 +40,26 @@ export class CrmError extends Error {
   }
 }
 
+/**
+ * The error text from a CRM error body: a string `detail`, or a FastAPI validation array
+ * (`[{loc: [...], msg}]`) as "loc.joined: msg; ...". Null when neither is present.
+ * `CrmError` truncates the result.
+ */
+export function detailText(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null
+  const d = (body as { detail?: unknown }).detail
+  if (typeof d === 'string') return d
+  if (!Array.isArray(d)) return null
+  const parts = d.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const { loc, msg } = item as { loc?: unknown; msg?: unknown }
+    if (typeof msg !== 'string') return []
+    const where = Array.isArray(loc) ? loc.map(String).join('.') : ''
+    return [where ? `${where}: ${msg}` : msg]
+  })
+  return parts.length ? parts.join('; ') : null
+}
+
 export interface CrmReader {
   listAccounts(): Promise<Account[]>
   getAccount(id: string): Promise<Account>
@@ -88,8 +108,7 @@ export function httpReader(
       }
       let detail = res.statusText || 'request failed'
       try {
-        const body = (await res.json()) as { detail?: unknown }
-        if (typeof body?.detail === 'string') detail = body.detail
+        detail = detailText(await res.json()) ?? detail
       } catch {
         // keep statusText
       }
