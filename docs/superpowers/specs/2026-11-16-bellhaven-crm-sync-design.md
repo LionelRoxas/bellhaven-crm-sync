@@ -45,10 +45,9 @@ Proposal types:
 | `reparent` | Match under another parent (or none), SOP says move directly (revenue = 0 or AR = 0) | PATCH `parent_id` → Bellhaven, plus any field updates |
 | `chow` | Match under another parent with revenue > 0 AND AR > 0 | POST new account under Bellhaven with website data; PATCH old account `chow_current_account` = new id. The old account is otherwise untouched. |
 | `duplicate` | 2+ accounts match one location | Choose a survivor; each loser: PATCH `duplicate_of_account` = survivor, `status` = Inactive, `note` explaining. Same proposal also carries the survivor's reparent/CHOW/field fixes (see "one proposal per location"). |
-| `create` | Location with no matching account | POST new account under Bellhaven |
+| `create` | Location with no strong match | POST new account under Bellhaven. Weak candidates (same zip but different street; same name but different state) are listed as "Not linked, and why" evidence, so the reviewer can reject if they disagree. |
 | `stale` | Account under Bellhaven with no website location, and no other account at its address | PATCH `status` = Needs Review, `note` explaining (parent left as is) |
 | `sold` | Account under Bellhaven with no website location, but another operator's account sits at the same address (the facility was sold) | SOP applies: revenue > 0 AND AR > 0 → PATCH old account `chow_current_account` = the new owner's existing account, nothing else. Otherwise → PATCH `duplicate_of_account` = new owner's account, `status` = Inactive, note. |
-| `ambiguous` | Weak/conflicting match (e.g. same zip, different street; name match in another state) | none; shows the evidence so the reviewer can see why it wasn't linked. It is never auto-linked. |
 
 ### Calls I made (correct me)
 
@@ -63,11 +62,11 @@ Proposal types:
 - **New accounts** (create and CHOW): name, street, city, state, zip, care type, parent = Bellhaven, status Active, a note citing the source page and run date.
 - **Notes** are written in a fixed format: `[bellhaven-sync YYYY-MM-DD p_xxxx] <reason>` (date and proposal id). The line is built when the proposal is applied, not when it is proposed, so it never affects the fingerprint. Existing note text is kept and the new line is appended.
 - **Already-handled accounts are out of matching:** accounts with `duplicate_of_account` or `chow_current_account` set are shown as evidence but never matched or proposed again, and a stale account already in Needs Review with a sync note isn't re-proposed. Without this, an applied CHOW (old and new account at one address) would come back next day as a duplicate.
-- **Weak candidates** (same zip, different street) only produce `ambiguous` when a location has no strong match; otherwise they're listed as evidence.
+- **Weak candidates** (same zip, different street; same name, different state) are evidence only, never linked. With no strong match the location becomes `create`, with the weak candidates shown. (Revised during planning: an `ambiguous` type would have left Union Square and Amberly Manor without accounts.)
 - **Short-scrape guard:** if the scrape finds 20%+ fewer locations than the last successful run (or none), the run aborts without writing proposals, so a website outage can't flood the queue with stale items.
 - **One proposal per website location** (bundling every write for that facility: survivor fixes, duplicate losers, CHOW), plus one per stale account. Approved or rejected as a whole; no per-field approval. This removes ordering problems between dependent proposals (a duplicate approved while its survivor's reparent is rejected). The proposal's type is its most significant action (chow > duplicate > reparent > update_fields), and its writes list shows everything.
 - **Duplicate losers point at the survivor** as it exists before any CHOW. If the survivor itself is a CHOW old account, the chain loser → survivor → `chow_current_account` → new account stays traceable. (No current case.)
-- **Matching requires the state to agree.** Zip implies state; a same-name or same-street-number account in another state is evidence for `ambiguous` at most (Amberly Manor CO, Carlisle PA vs New Carlisle OH).
+- **Matching requires the state to agree.** Zip implies state; a same-name or same-street-number account in another state is weak evidence at most, never a link (Amberly Manor CO, Carlisle PA vs New Carlisle OH).
 - **Care type blank or outside the location's offerings** (e.g. Independent Living) → set to the first offering's mapping. The website is the source of truth.
 - **Confirmed** locations appear under a "Confirmed, no change" filter on the queue, outside the pending count, so the reviewer can see every location was accounted for.
 

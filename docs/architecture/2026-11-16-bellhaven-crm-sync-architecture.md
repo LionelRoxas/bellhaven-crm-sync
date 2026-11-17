@@ -42,9 +42,9 @@ SQLite file `data/sync.db` (git-ignored), WAL mode, `busy_timeout = 5000` so the
 
 **proposals**:
 - `id TEXT PK` (short readable id, e.g. `p_7f3a1c`), `fingerprint TEXT UNIQUE NOT NULL`
-- `type TEXT` (`confirmed | update_fields | reparent | chow | duplicate | create | stale | sold | ambiguous`)
+- `type TEXT` (`confirmed | update_fields | reparent | chow | duplicate | create | stale | sold`)
 - `status TEXT` (`info | pending | approved | applied | failed | rejected | superseded`)
-  - `info` for `confirmed` and `ambiguous` (nothing to write, never approvable)
+  - `info` for `confirmed` (nothing to write, never approvable)
   - Mapping to the design's words: approved in the design = `approved` (applying) → `applied` | `failed`. An `approved` row older than 5 minutes with steps not all done is shown as **Interrupted** and can be resumed with `retry`.
 - `location_slug TEXT NULL`, `account_ids TEXT` (JSON array, involved accounts)
 - `title TEXT`, `summary TEXT`, `confidence REAL`
@@ -177,4 +177,4 @@ Local only. Env vars (`.env.example`): `CRM_API_BASE`, `CRM_TOKEN`, `SITE_BASE`,
 - **Live data drift before submission** (owner: builder, at run time): the sandbox may differ from the fixtures; fixtures pin logic, and the real run's queue is reviewed by hand anyway.
 - **Time budget** (owner: user): the brief expects ~2 hours; this is larger. Cut after review: SVG chain (now HTML/CSS), the lost-POST marker lookup (now an `unknown` step), lint in CI. Kept despite cost: one Playwright spec (the playbook requires e2e for UI) and dark mode (cheap with CSS variables). The writeup states the real time.
 - **Next 16 API differences** (owner: builder, during build): read the bundled docs before each Next file; `params` is a Promise, `connection()` before DB reads.
-- **Matching thresholds** (owner: builder, during build): tuned against fixtures; anything below threshold becomes `ambiguous`, never a write.
+- **Matching thresholds** (owner: builder, during build): tuned against fixtures; anything below the strong threshold is evidence only and is never linked; the location becomes `create`, which the reviewer can reject.
