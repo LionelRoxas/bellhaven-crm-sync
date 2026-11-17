@@ -66,6 +66,8 @@ export default async function QueuePage(props: PageProps<'/'>) {
     }
   }
 
+  const statusLabel = STATUS_FILTERS.find((f) => f.value === status)!.label
+
   return (
     <div className="stack">
       <h1>Review queue</h1>
@@ -82,14 +84,14 @@ export default async function QueuePage(props: PageProps<'/'>) {
             </li>
           ))}
         </ul>
-        <span className="label">Type</span>
+        <span className="label">Type (in {statusLabel})</span>
         <ul>
           <li>
             <Link href={href(status, undefined)} aria-current={!type ? 'page' : undefined}>
               All types
             </Link>
           </li>
-          {TYPES.map((t) => (
+          {TYPES.filter((t) => (typeCounts.get(t) ?? 0) > 0 || t === type).map((t) => (
             <li key={t}>
               <Link href={href(status, t)} aria-current={t === type ? 'page' : undefined}>
                 {TYPE_LABELS[t]} <span className="num">({typeCounts.get(t) ?? 0})</span>
