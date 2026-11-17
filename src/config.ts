@@ -4,6 +4,8 @@ export type Config = {
   siteBase: string
   parentName: string
   dbPath: string
+  groqApiKey: string | null
+  groqModel: string
 }
 
 function required(env: NodeJS.ProcessEnv | Record<string, string | undefined>, name: string): string {
@@ -19,5 +21,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     siteBase: env.SITE_BASE || 'https://analyst-assessment-production.up.railway.app',
     parentName: env.BELLHAVEN_PARENT_NAME || 'Bellhaven Senior Living (Parent Account)',
     dbPath: env.DB_PATH || 'data/sync.db',
+    groqApiKey: env.GROQ_API_KEY || null,
+    groqModel: env.GROQ_MODEL || 'openai/gpt-oss-120b',
   }
 }

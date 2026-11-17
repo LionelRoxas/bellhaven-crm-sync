@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Account, Evidence, ProposalDraft, ProposalType } from '@/types'
+import type { Account, AiOpinion, Evidence, ProposalDraft, ProposalType } from '@/types'
 import { fingerprint } from './fingerprint'
 
 export type Status = 'info' | 'pending' | 'approved' | 'applied' | 'failed' | 'rejected' | 'superseded'
@@ -94,6 +94,8 @@ export type Db = {
    */
   claimStep(proposalId: string, idx: number, claim: string, patch: { attemptedAt: string; response: string; error: string }): boolean
   lastRunInfo(): RunInfo | null
+  getAiOpinion(key: string): AiOpinion | null
+  putAiOpinion(key: string, opinion: AiOpinion): void
   close(): void
 }
 
@@ -143,6 +145,11 @@ CREATE TABLE IF NOT EXISTS steps (
   error TEXT,
   attempted_at TEXT,
   PRIMARY KEY (proposal_id, idx)
+);
+CREATE TABLE IF NOT EXISTS ai_opinions (
+  key TEXT PRIMARY KEY,
+  opinion TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 `
 
@@ -415,6 +422,17 @@ export function openDb(path: string): Db {
         superseded: (r.superseded as number) ?? 0,
         held: (r.held as number) ?? 0,
       }
+    },
+
+    getAiOpinion(key) {
+      const r = q('SELECT opinion FROM ai_opinions WHERE key = ?').get(key) as Row | undefined
+      return r ? (JSON.parse(r.opinion as string) as AiOpinion) : null
+    },
+
+    putAiOpinion(key, opinion) {
+      q('INSERT OR REPLACE INTO ai_opinions (key, opinion, created_at) VALUES (?, ?, ?)').run(
+        key, JSON.stringify(opinion), new Date().toISOString(),
+      )
     },
 
     close() {

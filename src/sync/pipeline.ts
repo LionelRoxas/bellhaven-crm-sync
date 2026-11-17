@@ -2,6 +2,7 @@ import type { Db } from '@/store/db'
 import type { CrmReader } from '@/crm/read'
 import { scrapeLocations } from './scrape'
 import { classify } from './classify'
+import type { Account, Location, ProposalDraft } from '@/types'
 
 export type RunSummary = {
   runId: number
@@ -21,6 +22,8 @@ export type PipelineDeps = {
   siteBase: string
   parentName: string
   now?: () => Date
+  /** Optional advisory annotator. Runs after classify; a failure never fails the run. */
+  secondOpinion?: (drafts: ProposalDraft[], ctx: { locations: Location[]; accounts: Account[] }) => Promise<void>
 }
 
 /** Abort on 0 locations, or when at least 20% fewer than the last good run (<= 80%). */
@@ -49,6 +52,13 @@ export async function runPipeline(deps: PipelineDeps): Promise<RunSummary> {
     }
 
     const drafts = classify(locations, accounts, parents[0].account_id, deps.siteBase)
+    if (deps.secondOpinion) {
+      try {
+        await deps.secondOpinion(drafts, { locations, accounts })
+      } catch {
+        // Advisory only: carry on without opinions.
+      }
+    }
     const counts = db.upsertDrafts(runId, drafts)
     written = true
     const summary: RunSummary = { runId, locations: locations.length, accounts: accounts.length, ...counts }

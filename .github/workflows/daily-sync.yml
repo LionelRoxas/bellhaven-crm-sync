@@ -27,3 +27,4 @@ jobs:
         env:
           CRM_API_BASE: ${{ secrets.CRM_API_BASE }}
           CRM_TOKEN: ${{ secrets.CRM_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

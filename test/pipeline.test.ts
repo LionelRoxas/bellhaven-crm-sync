@@ -179,3 +179,42 @@ describe('pipeline', () => {
     expect(db.listProposals()).toHaveLength(0)
   })
 })
+
+describe('second opinion hook', () => {
+  const fake = async (drafts: { type: string; evidence: { aiOpinion?: unknown } }[]) => {
+    for (const d of drafts) if (d.type === 'create') d.evidence.aiOpinion = { status: 'none', why: 'test' }
+  }
+
+  test('hook receives drafts, locations and accounts; annotations are stored', async () => {
+    const seen: { drafts: number; locations: number; accounts: number }[] = []
+    await run({
+      secondOpinion: async (drafts: never[], ctx: { locations: unknown[]; accounts: unknown[] }) => {
+        seen.push({ drafts: drafts.length, locations: ctx.locations.length, accounts: ctx.accounts.length })
+        await fake(drafts)
+      },
+    })
+    expect(seen).toEqual([{ drafts: 38, locations: 35, accounts: 121 }])
+    const create = db.listProposals().find((p) => p.type === 'create')!
+    expect(create.evidence.aiOpinion).toEqual({ status: 'none', why: 'test' })
+  })
+
+  test('a throwing hook does not fail the run', async () => {
+    const s = await run({ secondOpinion: async () => { throw new Error('boom') } })
+    expect(s.created).toBe(38)
+    expect(db.listProposals().every((p) => p.evidence.aiOpinion === undefined)).toBe(true)
+  })
+
+  test('fingerprints are identical with and without the hook', async () => {
+    await run()
+    const without = db.listProposals().map((p) => p.fingerprint).sort()
+    const dir2 = mkdtempSync(join(tmpdir(), 'bellhaven-'))
+    const db2 = openDb(join(dir2, 'sync.db'))
+    try {
+      await runPipeline(deps({ db: db2, secondOpinion: fake }))
+      expect(db2.listProposals().map((p) => p.fingerprint).sort()).toEqual(without)
+    } finally {
+      db2.close()
+      rmSync(dir2, { recursive: true, force: true })
+    }
+  })
+})

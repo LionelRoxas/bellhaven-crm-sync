@@ -103,6 +103,26 @@ If the survivor itself needs the CHOW branch, the whole proposal is typed `chow`
 
 A Bellhaven account with no website location is either **sold** (another operator's account sits at its address) or **stale** (nothing else is there). For stale accounts we don't know the new owner, and removing the parent would destroy information. Inactive would wrongly say the facility closed. So the proposal sets `status` = Needs Review with a note and leaves the parent alone. A person decides what happened. Alliance and Coldwater are the stale cases today.
 
+## AI second opinion (advisory)
+
+The address rules make every decision. For the two kinds of suggestion where the rules could not link a
+website community to a CRM account (**create** and **stale**), the pipeline also asks an LLM for a second
+look: is this "new" community really an existing account in the same city, or is this "stale" account really
+one of the website's communities? The answer appears in an "AI second opinion (advisory)" box on the
+suggestion page.
+
+- **It cannot change anything.** The opinion is stored as evidence only. It never changes a suggestion's type,
+  its planned writes, its fingerprint, or the SOP check, and the review app never calls the model.
+- **What is sent:** only structured fields (name, street, city, state, zip, parent name) for records in the same
+  city. CRM notes are never sent. The prompt tells the model that all of it is untrusted data, the reply must
+  match a strict JSON schema, and any record id it names must come from the shortlist, otherwise the opinion is
+  shown as unavailable.
+- **Model:** Groq, `openai/gpt-oss-120b` (override with `GROQ_MODEL`), temperature 0, strict structured output.
+- **Optional:** set `GROQ_API_KEY` in `.env.local` to enable it. Without a key, or on any error, the pipeline
+  runs exactly as before and the box says the opinion is unavailable.
+- **Cost and re-runs:** about six short calls per run on today's data. Answers are cached in the database by a
+  hash of the model, prompt version and input, so a daily re-run with unchanged data makes no calls.
+
 ## Re-run safety
 
 - **Fingerprints.** Each proposal's fingerprint is a hash of its type, involved account ids, location slug and the method, target and body of every step (`src/store/fingerprint.ts`). Notes and dates are not in it, so the same finding hashes the same every day.

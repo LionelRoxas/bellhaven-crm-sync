@@ -17,4 +17,5 @@ Anything that comes from the Bellhaven website, the CRM API, `.recon/`, `test/fi
 ## Other rules
 
 - Nothing writes to the CRM without an approval click in the review app. The pipeline is read-only by construction (`src/crm/read.ts` vs `src/crm/write.ts`).
+- LLM output (`src/ai/`) is advisory evidence only. Never feed it into steps, fingerprints, matching or the SOP decision, and never import `src/ai` from `app/` or `src/apply/`. Its replies are untrusted data too.
 - This repo uses Next.js 16. Read `node_modules/next/dist/docs/` before writing Next code.
