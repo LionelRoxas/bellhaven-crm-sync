@@ -4,6 +4,7 @@ import type { Account, AiOpinion, Location, ProposalDraft } from '@/types'
 import type { Db } from '@/store/db'
 
 export const PROMPT_VERSION = 1
+export const MAX_SHORTLIST = 15
 
 export type Ask = (system: string, user: string, schemaName: string, schema: object) => Promise<unknown>
 
@@ -75,12 +76,14 @@ async function opinionFor(d: ProposalDraft, ctx: Ctx): Promise<AiOpinion> {
     subject = fromAccount(acct)
     shortlist = ctx.locations.filter((l) => sameCity(l, { city: acct.billing_city, state: acct.billing_state })).map(fromLocation)
   }
+  // Keep prompts small in big cities; same-zip records first.
+  shortlist = [...shortlist].sort((a, b) => Number(b.zip === subject.zip) - Number(a.zip === subject.zip)).slice(0, MAX_SHORTLIST)
   if (shortlist.length === 0) return { status: 'none', why: 'No record in the same city to compare' }
   if (!ctx.ask) return { status: 'unavailable', why: 'No GROQ_API_KEY set' }
 
   const payload = { subject: strip(subject), shortlist }
   const key = createHash('sha256')
-    .update(JSON.stringify({ model: ctx.model, PROMPT_VERSION, kind: d.type, subject: payload.subject, shortlist }))
+    .update(JSON.stringify({ model: ctx.model, PROMPT_VERSION, system: SYSTEM, schema: SCHEMA, kind: d.type, subject: payload.subject, shortlist }))
     .digest('hex')
   const cached = ctx.cache.getAiOpinion(key)
   if (cached) return cached
