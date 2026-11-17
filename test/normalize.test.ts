@@ -8,6 +8,9 @@ describe('normStreet', () => {
     expect(normStreet('199 Barks Road West')).toBe(normStreet('199 Barks Rd W'))
     expect(normStreet('3313 Wilmington Pk')).toBe(normStreet('3313 Wilmington Pike'))
   })
+  test('prototype keys are plain words', () => {
+    expect(normStreet('1 Constructor ToString')).toBe('1 constructor tostring')
+  })
   test('St as Saint is kept', () => {
     expect(normStreet('45 St Lawrence Dr')).toBe('45 st lawrence dr')
   })

@@ -3,8 +3,11 @@ import { z } from 'zod'
 import type { Location } from '@/types'
 import { cleanText } from './normalize'
 
+const SLUG_RE = /^[a-z0-9-]+$/
+const MAX_PAGES = 20
+
 export const LocationSchema = z.object({
-  slug: z.string().min(1),
+  slug: z.string().regex(SLUG_RE),
   name: z.string().min(1).max(120),
   street: z.string().min(1).max(120),
   city: z.string().min(1).max(60),
@@ -27,7 +30,14 @@ function slugsFrom(html: string, base: URL, into: Set<string>) {
     }
     if (u.origin !== base.origin) return
     const m = /^\/communities\/([^/?#]+)\/?$/.exec(u.pathname)
-    if (m) into.add(decodeURIComponent(m[1]))
+    if (!m) return
+    let slug: string
+    try {
+      slug = decodeURIComponent(m[1])
+    } catch {
+      return
+    }
+    if (SLUG_RE.test(slug)) into.add(slug)
   })
 }
 
@@ -67,6 +77,7 @@ export async function scrapeLocations(
   const total = /Page\s+\d+\s*\/\s*(\d+)/.exec(pager)
   if (!total) throw new Error('Could not read "Page N / M" from the communities list')
   const lastPage = Number(total[1])
+  if (lastPage > MAX_PAGES) throw new Error(`Pager total ${lastPage} exceeds limit ${MAX_PAGES}`)
   slugsFrom(first, base, slugs)
   for (let n = 2; n <= lastPage; n++) slugsFrom(await fetchText(`/communities?page=${n}`), base, slugs)
   slugsFrom(await fetchText('/'), base, slugs)

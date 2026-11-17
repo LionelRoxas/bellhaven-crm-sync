@@ -13,3 +13,5 @@ export function fixtureFetcher(extra: Record<string, string> = {}) {
   }
   return { fetchText, requested }
 }
+
+export const readFixture = (name: string): string => readFileSync(new URL(`${name}.html`, dir), 'utf8')

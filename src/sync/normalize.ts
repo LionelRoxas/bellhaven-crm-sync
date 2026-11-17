@@ -17,6 +17,8 @@ const DIRECTIONS: Record<string, string> = {
   southeast: 'se', se: 'se', southwest: 'sw', sw: 'sw',
 }
 
+const DIRECTION_VALUES = new Set(Object.values(DIRECTIONS))
+
 const SUFFIXES: Record<string, string> = {
   street: 'st', st: 'st', road: 'rd', rd: 'rd', avenue: 'ave', ave: 'ave',
   boulevard: 'blvd', blvd: 'blvd', drive: 'dr', dr: 'dr', lane: 'ln', ln: 'ln',
@@ -30,11 +32,10 @@ export function normStreet(s: string): string {
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
-    .map((t) => DIRECTIONS[t] ?? t)
-  const isDir = (t: string) => Object.values(DIRECTIONS).includes(t)
+    .map((t) => (Object.hasOwn(DIRECTIONS, t) ? DIRECTIONS[t] : t))
   let i = tokens.length - 1
-  if (i > 0 && isDir(tokens[i])) i--
-  if (i > 0 && tokens[i] in SUFFIXES) tokens[i] = SUFFIXES[tokens[i]]
+  if (i > 0 && DIRECTION_VALUES.has(tokens[i])) i--
+  if (i > 0 && Object.hasOwn(SUFFIXES, tokens[i])) tokens[i] = SUFFIXES[tokens[i]]
   return tokens.join(' ')
 }
 
