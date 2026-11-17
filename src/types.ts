@@ -56,6 +56,11 @@ export type Candidate = {
   reasons: string[]
 }
 
+export type AiOpinion =
+  | { status: 'ok'; verdict: 'likely_same' | 'unlikely' | 'unsure'; matchId: string | null; matchLabel: string | null; reason: string; model: string }
+  | { status: 'none'; why: string }
+  | { status: 'unavailable'; why: string }
+
 export type Evidence = {
   location: Location | null
   accounts: Account[]
@@ -63,6 +68,8 @@ export type Evidence = {
   notLinked: { accountId: string; why: string }[]
   sop: { revenue: number; ar: number; rule: string } | null
   suspiciousText: { accountId: string; field: string; text: string }[]
+  /** Advisory only; never feeds the fingerprint or any step. */
+  aiOpinion?: AiOpinion
 }
 
 export type ProposalDraft = {
