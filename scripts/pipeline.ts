@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs'
+import { addSecondOpinions } from '../src/ai/second-opinion'
+import { groqJson } from '../src/ai/groq'
 import { loadConfig } from '../src/config'
 import { httpReader } from '../src/crm/read'
 import { openDb } from '../src/store/db'
@@ -14,12 +16,18 @@ async function main() {
       if (!r.ok) throw new Error(`Site ${r.status} for ${path}`)
       return r.text()
     }
+    const apiKey = cfg.groqApiKey
+    const ask = apiKey
+      ? (system: string, user: string, schemaName: string, schema: object) =>
+          groqJson({ apiKey, model: cfg.groqModel, system, user, schemaName, schema })
+      : null
     const s = await runPipeline({
       fetchText,
       crm: httpReader(cfg),
       db,
       siteBase: cfg.siteBase,
       parentName: cfg.parentName,
+      secondOpinion: (drafts, c) => addSecondOpinions(drafts, { ...c, ask, model: cfg.groqModel, cache: db }),
     })
     console.log(
       `run ${s.runId}: ${s.locations} locations, ${s.accounts} accounts, ` +
@@ -28,6 +36,12 @@ async function main() {
     )
     const counts: Record<string, number> = {}
     for (const p of db.listProposals({ status: 'pending' })) counts[p.type] = (counts[p.type] ?? 0) + 1
+    const ai: Record<string, number> = {}
+    for (const p of db.listProposals({ status: 'pending' })) {
+      const o = p.evidence.aiOpinion
+      if (o) ai[o.status] = (ai[o.status] ?? 0) + 1
+    }
+    console.log(`AI second opinions on pending proposals: ${JSON.stringify(ai)}${ask ? '' : ' (no Groq key set)'}`)
     const info = db.listProposals({ status: 'info' }).length
     console.log(`pending by type: ${JSON.stringify(counts)}; info (confirmed): ${info}`)
   } finally {

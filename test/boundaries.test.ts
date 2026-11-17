@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import ts from 'typescript'
 import { expect, test } from 'vitest'
 
@@ -7,7 +7,7 @@ const root = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '
 
 function tsFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? tsFiles(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : [],
+    e.isDirectory() ? tsFiles(join(dir, e.name)) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : [],
   )
 }
 
@@ -37,4 +37,28 @@ test('pipeline code never imports the write client or apply code', () => {
   const files = [...tsFiles(join(root, 'src', 'sync')), ...tsFiles(join(root, 'scripts'))]
   expect(files.length).toBeGreaterThan(5)
   for (const f of files) expect(forbidden(readFileSync(f, 'utf8')), f).toEqual([])
+})
+
+const AI_ALIAS = /^@\/ai($|\/)/
+function aiImports(src: string, file: string): string[] {
+  return specifiers(src).filter((s) => {
+    if (AI_ALIAS.test(s)) return true
+    if (!s.startsWith('.')) return false
+    const target = resolve(dirname(file), s).replaceAll(sep, '/')
+    return target.includes('/src/ai/') || target.endsWith('/src/ai')
+  })
+}
+
+test('ai import detector catches alias and relative forms', () => {
+  const f = join(root, 'app', 'components', 'x.ts')
+  expect(aiImports("import { a } from '@/ai/second-opinion'", f)).toHaveLength(1)
+  expect(aiImports("import { a } from '@/ai'", f)).toHaveLength(1)
+  expect(aiImports("import { a } from '../../src/ai/groq'", f)).toHaveLength(1)
+  expect(aiImports("import { a } from '@/store/db'", f)).toEqual([])
+})
+
+test('review app and apply code never import src/ai', () => {
+  const files = [...tsFiles(join(root, 'app')), ...tsFiles(join(root, 'src', 'apply'))]
+  expect(files.length).toBeGreaterThan(5)
+  for (const f of files) expect(aiImports(readFileSync(f, 'utf8'), f), f).toEqual([])
 })

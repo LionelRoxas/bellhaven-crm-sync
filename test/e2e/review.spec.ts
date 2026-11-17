@@ -42,6 +42,17 @@ test('instruction-like CRM text is flagged and shown as data only', async ({ pag
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
 })
 
+test('a create proposal shows the advisory AI box; a reparent does not', async ({ page }) => {
+  await openFromQueue(page, 'Bellhaven of Carlisle')
+  const box = page.getByRole('region', { name: 'AI second opinion (advisory)' })
+  await expect(box).toBeVisible()
+  await expect(box).toContainText('Advisory only. It never changes this suggestion or what gets written.')
+  await expect(box).toContainText('Not sure')
+  await expect(box).toContainText('Fake opinion for tests')
+  await openFromQueue(page, 'Bellhaven Crossings of Lima')
+  await expect(page.getByRole('heading', { name: 'AI second opinion (advisory)' })).toHaveCount(0)
+})
+
 test('approving Tiffin applies both steps to the CRM', async ({ page, request }) => {
   await openFromQueue(page, 'Bellhaven of Tiffin')
   const evidence = page.getByRole('table', { name: 'Evidence' })

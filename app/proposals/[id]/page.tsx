@@ -4,6 +4,7 @@ import { connection } from 'next/server'
 import { isInterrupted, sentBody } from '@/apply/apply'
 import type { ProposalRow, StepRow } from '@/store/db'
 import { getConfig, getDb } from '@/server/deps'
+import { AiOpinion } from '../../components/AiOpinion'
 import { DecisionForm } from '../../components/DecisionForm'
 import { EvidenceTable } from '../../components/EvidenceTable'
 import { MatchReasons } from '../../components/MatchReasons'
@@ -148,6 +149,7 @@ export default async function ProposalPage(props: PageProps<'/proposals/[id]'>) 
           />
           {evidence.sop && <SopCheck type={p.type} sop={evidence.sop} createsAccount={steps.some((s) => s.method === 'POST')} />}
           <MatchReasons evidence={evidence} />
+          {evidence.aiOpinion && <AiOpinion opinion={evidence.aiOpinion} />}
         </aside>
       </div>
     </div>

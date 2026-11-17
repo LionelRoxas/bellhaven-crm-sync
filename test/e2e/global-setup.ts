@@ -22,6 +22,14 @@ export default async function globalSetup() {
       db,
       siteBase: SITE_BASE,
       parentName: 'Bellhaven Senior Living (Parent Account)',
+      // No network: a fixed opinion on create drafts.
+      secondOpinion: async (drafts) => {
+        for (const d of drafts) {
+          if (d.type === 'create') {
+            d.evidence.aiOpinion = { status: 'ok', verdict: 'unsure', matchId: null, matchLabel: null, reason: 'Fake opinion for tests', model: 'fake' }
+          }
+        }
+      },
     })
   } finally {
     db.close()
