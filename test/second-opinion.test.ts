@@ -120,6 +120,23 @@ describe('addSecondOpinions', () => {
     expect(d2.evidence.aiOpinion?.status).toBe('ok')
   })
 
+  it('re-asks when the shortlist changes', async () => {
+    const cache = mkCache()
+    const { ask, calls } = mkAsk({ verdict: 'unlikely', matchId: null, reason: 'r' })
+    await run([draft('create')], ask, cache)
+    await run([draft('create')], ask, cache, [acct({ billing_street: '9 Elm St' })])
+    expect(calls).toHaveLength(2)
+  })
+
+  it('caps the shortlist at 15, same zip first', async () => {
+    const { ask, calls } = mkAsk({ verdict: 'unlikely', matchId: null, reason: 'r' })
+    const many = Array.from({ length: 20 }, (_, i) => acct({ account_id: `B${i}`, billing_zip: '99999' }))
+    await run([draft('create')], ask, mkCache(), [...many, acct({ account_id: 'SAMEZIP' })])
+    const sent = JSON.parse(calls[0].user).shortlist as { id: string }[]
+    expect(sent).toHaveLength(15)
+    expect(sent[0].id).toBe('SAMEZIP')
+  })
+
   it('leaves other drafts and fingerprint inputs untouched', async () => {
     const other = draft('confirmed')
     const c = draft('create')
