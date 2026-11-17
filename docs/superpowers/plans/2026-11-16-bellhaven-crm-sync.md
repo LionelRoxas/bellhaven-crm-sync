@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-Status: Draft
+Status: Approved 2026-11-16 (execution: subagent-driven)
 
 **Goal:** A daily pipeline that scrapes Bellhaven's community directory, matches each location to CRM accounts, and stores proposals with evidence, plus a local Next.js review app where only an Approve click writes the proposal's changes to the CRM.
 
