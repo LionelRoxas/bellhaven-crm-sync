@@ -20,10 +20,14 @@ test('queue shows pending counts and the Tiffin CHOW row', async ({ page }) => {
   const row = page.getByRole('row').filter({ hasText: 'Bellhaven of Tiffin' })
   await expect(row).toHaveCount(1)
   await expect(row.getByRole('cell', { name: 'CHOW', exact: true })).toBeVisible()
-  await expect(page.getByText('Type (in Pending)', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Confirmed (0)' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'All types', exact: true })).toBeVisible()
+  const typeFilter = page.getByRole('combobox', { name: 'Type (in Pending)' })
+  await expect(typeFilter).toHaveText('All types')
   await page.screenshot({ path: 'test-results/queue.png', fullPage: true })
+  await typeFilter.click()
+  await expect(page.getByRole('option', { name: /^Confirmed/ })).toHaveCount(0)
+  await page.getByRole('option', { name: 'CHOW (2)' }).click()
+  await expect(page).toHaveURL(/\?type=chow$/)
+  await expect(page.getByRole('row')).toHaveCount(3)
 })
 
 test('instruction-like CRM text is flagged and shown as data only', async ({ page }) => {

@@ -27,7 +27,9 @@ export function QueueTable({ rows, interrupted }: { rows: ProposalRow[]; interru
         <tbody>
           {rows.map((p) => (
             <tr key={p.id}>
-              <td className="type">{TYPE_LABELS[p.type]}</td>
+              <td className="type">
+                <span className="badge">{TYPE_LABELS[p.type]}</span>
+              </td>
               <td className="facility">
                 <Link href={`/proposals/${p.id}`}>{p.title}</Link>
               </td>

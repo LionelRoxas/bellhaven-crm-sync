@@ -178,3 +178,7 @@ Local only. Env vars (`.env.example`): `CRM_API_BASE`, `CRM_TOKEN`, `SITE_BASE`,
 - **Time budget** (owner: user): the brief expects ~2 hours; this is larger. Cut after review: SVG chain (now HTML/CSS), the lost-POST marker lookup (now an `unknown` step), lint in CI. Kept despite cost: one Playwright spec (the playbook requires e2e for UI) and dark mode (cheap with CSS variables). The writeup states the real time.
 - **Next 16 API differences** (owner: builder, during build): read the bundled docs before each Next file; `params` is a Promise, `connection()` before DB reads.
 - **Matching thresholds** (owner: builder, during build): tuned against fixtures; anything below the strong threshold is evidence only and is never linked; the location becomes `create`, which the reviewer can reject.
+
+## ADR: Bellhaven site styling and ui-sdk Select (2026-11-17)
+- The review app now uses the Bellhaven website's own design system (green #2E5D50, gold #C9A227, cream #FAF7F0, ink #2B2B26, Georgia text, Verdana labels, white cards with #E4DFD2 borders), so the internal tool reads as part of the same brand. Dark mode keeps the same roles with a deep-green palette.
+- The queue's type filter is a `@ui-sdk/react` Select (beta) instead of a row of links: it handles keyboard, focus and ARIA, and scales on a phone. Status filters stay plain links because each one is a page address. If ui-sdk's beta API changes, the filter can fall back to the old link row with no data changes.

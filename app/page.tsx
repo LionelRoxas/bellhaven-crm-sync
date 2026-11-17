@@ -6,6 +6,7 @@ import type { ProposalType } from '@/types'
 import { getDb } from '@/server/deps'
 import { CountsStrip, type Counts } from './components/CountsStrip'
 import { QueueTable } from './components/QueueTable'
+import { TypeFilter } from './components/TypeFilter'
 import { TYPE_LABELS } from './components/format'
 
 const STATUS_FILTERS = [
@@ -74,8 +75,9 @@ export default async function QueuePage(props: PageProps<'/'>) {
       <CountsStrip counts={counts} run={db.lastRunInfo()} />
 
       <nav className="filters" aria-label="Filters">
-        <span className="label">Status</span>
-        <ul>
+        <div className="filter-row">
+          <span className="label">Status</span>
+          <ul>
           {STATUS_FILTERS.map((f) => (
             <li key={f.value}>
               <Link href={href(f.value, type)} aria-current={f.value === status ? 'page' : undefined}>
@@ -83,22 +85,22 @@ export default async function QueuePage(props: PageProps<'/'>) {
               </Link>
             </li>
           ))}
-        </ul>
-        <span className="label">Type (in {statusLabel})</span>
-        <ul>
-          <li>
-            <Link href={href(status, undefined)} aria-current={!type ? 'page' : undefined}>
-              All types
-            </Link>
-          </li>
-          {TYPES.filter((t) => (typeCounts.get(t) ?? 0) > 0 || t === type).map((t) => (
-            <li key={t}>
-              <Link href={href(status, t)} aria-current={t === type ? 'page' : undefined}>
-                {TYPE_LABELS[t]} <span className="num">({typeCounts.get(t) ?? 0})</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+          </ul>
+        </div>
+        <div className="filter-row">
+          <TypeFilter
+          label={`Type (in ${statusLabel})`}
+          value={type ?? 'all'}
+          options={[
+            { value: 'all', label: 'All types', href: href(status, undefined) },
+            ...TYPES.filter((t) => (typeCounts.get(t) ?? 0) > 0 || t === type).map((t) => ({
+              value: t,
+              label: `${TYPE_LABELS[t]} (${typeCounts.get(t) ?? 0})`,
+              href: href(status, t),
+            })),
+          ]}
+          />
+        </div>
       </nav>
 
       {rows.length > 0 ? (
