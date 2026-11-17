@@ -1,6 +1,6 @@
 # Demo plan: Bellhaven CRM sync build walkthrough
 
-Status: Revision 8 draft (sales ops analyst framing: account hierarchy, revenue and AR terms, fix breakdown, safeguards), awaiting approval
+Status: Revision 8 (sales ops analyst framing: account hierarchy, revenue and AR terms, fix breakdown, safeguards), approved 2026-11-17
 
 ## Audience and takeaway
 - **Who:** anyone, including someone with no background in sales, CRMs or senior care, as well as the hiring team.
