@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { connection } from 'next/server'
-import { isInterrupted } from '@/apply/apply'
+import { isInterrupted, sentBody } from '@/apply/apply'
 import type { ProposalRow, StepRow } from '@/store/db'
 import { getConfig, getDb } from '@/server/deps'
 import { DecisionForm } from '../../components/DecisionForm'
@@ -14,6 +14,17 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { StepLog } from '../../components/StepLog'
 import { Src } from '../../components/Src'
 import { TYPE_LABELS, confidenceLabel, safeHref, utc } from '../../components/format'
+
+/** What a create step sent, so the reviewer can look for the account in the CRM. */
+function sentSummary(s: StepRow, bh: { id: string; name: string }) {
+  const b = sentBody(s)
+  return {
+    name: b.name ?? '',
+    street: b.billing_street ?? '',
+    place: [b.billing_city, [b.billing_state, b.billing_zip].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+    parent: b.parent_id === bh.id ? bh.name : (b.parent_id ?? ''),
+  }
+}
 
 /** The Bellhaven parent's id, taken from our own step bodies or the snapshot of an account under it. */
 function bellhavenId(p: ProposalRow, steps: StepRow[], parentName: string): string {
@@ -36,7 +47,7 @@ function stateNote(p: ProposalRow, interrupted: boolean): string | null {
     case 'failed':
       return 'Some steps did not complete. See the step log.'
     case 'superseded':
-      return 'The latest pipeline run no longer finds this change. Nothing to decide.'
+      return 'Superseded: the CRM changed since this was proposed, or the latest pipeline run no longer finds this change. The next run proposes it again, with fresh data, if it still applies.'
     default:
       return null
   }
@@ -129,12 +140,13 @@ export default async function ProposalPage(props: PageProps<'/proposals/[id]'>) 
                     idx: s.idx,
                     method: s.method,
                     label: s.method === 'POST' ? 'Create a new account' : `Update account ${s.accountId}`,
+                    sent: s.method === 'POST' ? sentSummary(s, bh) : undefined,
                   }))
                 : []
             }
             note={stateNote(p, interrupted)}
           />
-          {evidence.sop && <SopCheck type={p.type} sop={evidence.sop} />}
+          {evidence.sop && <SopCheck type={p.type} sop={evidence.sop} createsAccount={steps.some((s) => s.method === 'POST')} />}
           <MatchReasons evidence={evidence} />
         </aside>
       </div>

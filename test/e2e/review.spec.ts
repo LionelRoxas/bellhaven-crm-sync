@@ -149,6 +149,14 @@ test('an unknown step can be resolved by hand, then retried', async ({ page }) =
 test('marking a create step as landed checks the account id in the CRM', async ({ page }) => {
   const id = markUnknown('Bellhaven of Batavia')
   await page.goto(`/proposals/${id}`)
+  // What the create step sent, so the reviewer can find the account in the CRM.
+  const sent = page.getByTestId('sent-0')
+  await expect(sent.locator('dd')).toHaveText([
+    'Bellhaven of Batavia',
+    '2000 Hospital Dr',
+    'Batavia, OH 45103',
+    'Bellhaven Senior Living (Parent Account)',
+  ])
   await page.getByLabel('Created account id').fill('001ZZZZZZZZZZZZZZZ')
   await page.getByRole('button', { name: 'It landed' }).click()
   await expect(page.getByRole('status')).toHaveText('Account 001ZZZZZZZZZZZZZZZ not found in the CRM.')

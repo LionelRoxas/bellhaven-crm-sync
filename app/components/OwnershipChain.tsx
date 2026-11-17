@@ -35,15 +35,20 @@ export function buildChain(p: ProposalRow, steps: StepRow[], bhName: string, bhI
   const movesTo = (s: StepRow | undefined) => s?.body.parent_id === bhId
 
   switch (p.type) {
-    case 'chow':
+    case 'chow': {
+      // Linking to a Bellhaven account that already exists (no create step) shows that account.
+      const linkedId = steps.map((s) => s.body.chow_current_account).find((v): v is string => typeof v === 'string')
+      const linked = p.evidence.accounts.find((a) => a.account_id === linkedId)
+      const target: ChainNode = linked ? accountNode(linked, 'Existing Bellhaven account') : newNode
       return [
         {
           cells: [[parentNode(first, bhName, bhId)], first ? [accountNode(first, 'Existing account, keeps its history')] : empty, empty],
           edges: [solid('stays under'), null],
         },
         { label: 'CHOW current account' },
-        { cells: [empty, [newNode], [bh]], edges: [null, solid('parent', true)] },
+        { cells: [empty, [target], [bh]], edges: [null, solid('parent', true)] },
       ]
+    }
     case 'create':
       return [{ cells: [empty, [newNode], [bh]], edges: [null, solid('parent', true)] }]
     case 'reparent':
@@ -79,12 +84,13 @@ export function buildChain(p: ProposalRow, steps: StepRow[], bhName: string, bhI
     case 'sold': {
       const ours = involved.find((a) => steps.some((s) => s.accountId === a.account_id))
       const owner = involved.find((a) => a !== ours)
+      const asDuplicate = steps.some((s) => typeof s.body.duplicate_of_account === 'string')
       return [
         {
-          cells: [empty, ours ? [accountNode(ours, 'Sold facility')] : empty, [parentNode(ours, bhName, bhId)]],
+          cells: [empty, ours ? [accountNode(ours, 'Sold facility', 'plain', asDuplicate ? 'Status becomes Inactive' : undefined)] : empty, [parentNode(ours, bhName, bhId)]],
           edges: [null, solid('under')],
         },
-        { label: 'CHOW current account' },
+        { label: asDuplicate ? 'Duplicate of' : 'CHOW current account' },
         {
           cells: [empty, owner ? [accountNode(owner, "New owner's account")] : empty, [parentNode(owner, bhName, bhId)]],
           edges: [null, solid('under')],

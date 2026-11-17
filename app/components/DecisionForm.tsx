@@ -5,7 +5,13 @@ import type { Result } from '@/apply/apply'
 import { approveAction, rejectAction, resolveStepAction, retryAction } from '../actions'
 
 type Intent = 'approve' | 'reject' | 'retry' | 'resolve'
-type UnknownStep = { idx: number; method: 'POST' | 'PATCH'; label: string }
+type UnknownStep = {
+  idx: number
+  method: 'POST' | 'PATCH'
+  label: string
+  /** For a create step: what was sent, so the reviewer can find the account in the CRM. */
+  sent?: { name: string; street: string; place: string; parent: string }
+}
 
 export type DecisionProps = {
   id: string
@@ -72,6 +78,26 @@ export function DecisionForm(props: DecisionProps) {
             <p className="small" style={{ marginTop: 4 }}>
               {s.label}. Check the CRM, then record what happened.
             </p>
+            {s.sent && (
+              <dl className="kv" style={{ marginTop: 8 }} data-testid={`sent-${s.idx}`}>
+                <dt>Name</dt>
+                <dd>
+                  <span className="src">{s.sent.name}</span>
+                </dd>
+                <dt>Street</dt>
+                <dd>
+                  <span className="src">{s.sent.street}</span>
+                </dd>
+                <dt>City</dt>
+                <dd>
+                  <span className="src">{s.sent.place}</span>
+                </dd>
+                <dt>Parent</dt>
+                <dd>
+                  <span className="src">{s.sent.parent}</span>
+                </dd>
+              </dl>
+            )}
             <form action={submitAs('resolve')} style={{ marginTop: 8 }}>
               <input type="hidden" name="id" value={props.id} />
               <input type="hidden" name="idx" value={s.idx} />

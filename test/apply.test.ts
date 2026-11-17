@@ -376,7 +376,7 @@ describe('resolveUnknownStep', () => {
   test('POST marked done needs a valid created id, then retry finishes without a second POST', async () => {
     const p = await unknownChow()
     // The POST landed in the CRM after all: simulate the reviewer finding it.
-    const landed = await crm.createAccount({ name: 'Bellhaven of Tiffin', parent_id: BELLHAVEN_ID })
+    const landed = await crm.createAccount(db.getSteps(p.id)[0].body as Record<string, string>)
     posts = 0
     expect((await resolveUnknownStep(db, crm, p.id, 0, 'done')).ok).toBe(false)
     expect((await resolveUnknownStep(db, crm, p.id, 0, 'done', 'bad id')).ok).toBe(false)
@@ -577,5 +577,46 @@ describe('SOP re-check at write time', () => {
     acct(SANDUSKY).lifetime_revenue = 0
     expect(await ok(p)).toEqual({ ok: false, message: SOP_MSG })
     expect(patches).toBe(0)
+  })
+})
+
+describe('resolving an unknown create step checks the account', () => {
+  async function unknownChow() {
+    const p = byAccount('chow', TIFFIN)
+    crm.failNext('POST', 'network')
+    await ok(p)
+    return p
+  }
+
+  test("refuses one of the proposal's own accounts", async () => {
+    const p = await unknownChow()
+    expect(await resolveUnknownStep(db, crm, p.id, 0, 'done', TIFFIN)).toEqual({
+      ok: false,
+      message: "That is one of this proposal's existing accounts, not the one this step created.",
+    })
+    expect(db.getSteps(p.id)[0].status).toBe('unknown')
+  })
+
+  test('refuses an account whose name, zip or parent differ from what was sent', async () => {
+    const p = await unknownChow()
+    const sent = db.getSteps(p.id)[0].body as Record<string, string>
+    const changes: Record<string, string>[] = [{ name: 'Someone Else' }, { billing_zip: '43001' }, { parent_id: '001FWSQ30SFW6S7604' }]
+    for (const change of changes) {
+      const other = await crm.createAccount({ ...sent, ...change })
+      expect(await resolveUnknownStep(db, crm, p.id, 0, 'done', other.account_id)).toEqual({
+        ok: false,
+        message: `Account ${other.account_id} doesn't match what this step sent (name, zip, parent).`,
+      })
+    }
+    // An unrelated existing account (e.g. Sandusky) is refused too.
+    expect((await resolveUnknownStep(db, crm, p.id, 0, 'done', SANDUSKY)).ok).toBe(false)
+    expect(db.getSteps(p.id)[0].status).toBe('unknown')
+  })
+
+  test('accepts the account that matches what was sent', async () => {
+    const p = await unknownChow()
+    const landed = await crm.createAccount(db.getSteps(p.id)[0].body as Record<string, string>)
+    expect(await resolveUnknownStep(db, crm, p.id, 0, 'done', landed.account_id)).toEqual({ ok: true, message: 'Step marked done' })
+    expect(db.getSteps(p.id)[0]).toMatchObject({ status: 'done', resultAccountId: landed.account_id })
   })
 })

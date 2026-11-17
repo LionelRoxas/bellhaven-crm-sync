@@ -49,6 +49,15 @@ function readRecord(s: StepRow): StepRecord | null {
   }
 }
 
+/** The body a step sent (from its write-ahead record), or its stored body if no record survived. */
+export function sentBody(s: StepRow): Record<string, string> {
+  const rec = readRecord(s)
+  if (rec) return rec.sent
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(s.body)) if (typeof v === 'string') out[k] = v
+  return out
+}
+
 const isRef = (v: unknown): boolean =>
   !!v && typeof v === 'object' && !Array.isArray(v) &&
   Object.keys(v).length === 1 && (v as Record<string, unknown>).$ref === 'created'
@@ -350,7 +359,8 @@ function checkResolvable(
 
 /**
  * After checking the CRM by hand, the reviewer records whether an `unknown` step landed.
- * A create step marked done needs the id of the account it created, which must exist in the CRM.
+ * A create step marked done needs the id of the account it created: it must exist in the CRM, must
+ * not be one of the proposal's own accounts, and its name, zip and parent must equal what was sent.
  * The proposal stays (or becomes) `failed`, so `retry` can then run what's left.
  */
 export async function resolveUnknownStep(
@@ -366,12 +376,21 @@ export async function resolveUnknownStep(
   if (!first.ok) return first
 
   if (first.needsId) {
+    if (createdAccountId! in first.p.snapshot) {
+      return fail("That is one of this proposal's existing accounts, not the one this step created.")
+    }
+    let found: Account
     try {
-      await crm.getAccount(createdAccountId!)
+      found = await crm.getAccount(createdAccountId!)
     } catch (e) {
       if (e instanceof CrmError && e.status === 404) return fail(`Account ${createdAccountId} not found in the CRM.`)
       const detail = e instanceof CrmError ? e.detail : 'request failed'
       return fail(`Could not check account ${createdAccountId}: ${detail}`)
+    }
+    const sent = sentBody(first.s)
+    const same = (k: 'name' | 'billing_zip' | 'parent_id') => String(found[k] ?? '').trim() === String(sent[k] ?? '').trim()
+    if (!same('name') || !same('billing_zip') || !same('parent_id')) {
+      return fail(`Account ${createdAccountId} doesn't match what this step sent (name, zip, parent).`)
     }
   }
 
