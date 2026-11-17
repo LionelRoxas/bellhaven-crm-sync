@@ -46,6 +46,13 @@ Two lookalikes are deliberately not linked: Amberly Manor in Colorado Springs (s
 
 These counts are pinned by `test/classify.test.ts` against fixtures saved from the sandbox on 2026-11-16.
 
+## End state after review (2026-11-17)
+
+- **Run 1** against the sandbox CRM: 35 locations, 121 accounts, 26 proposals, 12 already correct.
+- **Review:** all 26 approved after checking each one's evidence; none rejected. Every write step completed (`done`), with no failed or unknown steps.
+- **Run 2** (re-run after approval): 35 locations, 127 accounts (4 new communities plus 2 new CHOW accounts for Tiffin and Marietta), **0 new proposals**, and all 35 locations confirmed. Approved items were not re-proposed.
+- Alliance and Coldwater are marked `Needs Review` (not on the website, no billing history) instead of Inactive, so a person confirms before the accounts are retired.
+
 ## How matching works
 
 Names lie: renamed facilities keep their address, and lookalike names exist elsewhere. So the link between a website location and a CRM account is the address (`src/sync/match.ts`). All 121 accounts are candidates, not only the ones under Bellhaven, because ownership errors hide under other parents.
