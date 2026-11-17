@@ -2,7 +2,8 @@ import * as cheerio from 'cheerio'
 
 /** Decode HTML entities, strip control and zero-width chars, collapse whitespace, trim. */
 export function cleanText(s: string): string {
-  const decoded = cheerio.load(`<p>${s}</p>`, null, false)('p').text()
+  // Only markup or entities need the HTML parser; plain text decodes to itself.
+  const decoded = /[&<]/.test(s) ? cheerio.load(`<p>${s}</p>`, null, false)('p').text() : s
   return decoded
     .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, (c) =>
       /\s/.test(c) ? ' ' : '',

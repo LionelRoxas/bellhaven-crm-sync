@@ -39,3 +39,17 @@ test('nameTokens and similarity', () => {
   expect(nameSimilarity('Bellhaven of Tiffin', 'Tiffin Care Center')).toBe(1)
   expect(nameSimilarity('Bellhaven of Tiffin', 'Bellhaven of Erie')).toBe(0)
 })
+
+describe('cleanText fast path', () => {
+  test('plain text without & or < gives the same result as the HTML decode', () => {
+    expect(cleanText('  Plain\r\n\tName\u0000 > here ')).toBe('Plain Name > here')
+    expect(cleanText('A &amp; B <b>x</b>')).toBe('A & B x')
+    expect(cleanText('Caf&eacute;')).toBe('Caf\u00e9')
+  })
+  test('is cheap on repeated plain input', () => {
+    const t0 = performance.now()
+    for (let i = 0; i < 20000; i++) cleanText(`1120 West Main Street ${i % 50}`)
+    expect(performance.now() - t0).toBeLessThan(200)
+  })
+})
+

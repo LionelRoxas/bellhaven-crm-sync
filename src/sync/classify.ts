@@ -106,8 +106,8 @@ function locationDraft(loc: Location, accounts: Account[], bellhavenId: string):
 
   if (strong.length === 0) {
     // No account is involved; weak candidates are shown for the reviewer but never linked.
-    const evidence = baseEvidence(loc, [])
-    evidence.accounts = weak.map((c) => c.account)
+    // Their free text is still scanned so the reviewer sees flagged lookalikes.
+    const evidence = baseEvidence(loc, weak.map((c) => c.account))
     evidence.candidates = candidateEvidence
     evidence.notLinked = notLinked
     return {
@@ -182,7 +182,8 @@ function locationDraft(loc: Location, accounts: Account[], bellhavenId: string):
     }
     summary = `Merge ${losers.length} duplicate${losers.length > 1 ? 's' : ''} into ${survivor.account_id}` +
       (type === 'confirmed' ? '' : `; ${summary}`)
-    type = 'duplicate'
+    // Precedence: chow > duplicate > reparent > update_fields.
+    if (type !== 'chow') type = 'duplicate'
   }
 
   const path = strongPath(loc, survivor)
