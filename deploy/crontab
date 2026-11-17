@@ -1,0 +1,4 @@
+# Daily Bellhaven sync, 06:00 on the machine that hosts the review app (the SQLite file lives there).
+# Re-running is safe: the pipeline only proposes (it cannot write to the CRM), and a finding that was
+# already decided or is still pending is not proposed again (fingerprints), so a missed or doubled run changes nothing.
+0 6 * * * cd /opt/bellhaven-crm-sync && npm run pipeline >> logs/pipeline.log 2>&1

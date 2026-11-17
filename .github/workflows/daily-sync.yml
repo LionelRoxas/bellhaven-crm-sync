@@ -1,0 +1,29 @@
+# Reference only. The pipeline stores proposals in a local SQLite file (DB_PATH), so a run on a
+# GitHub runner would write to a database nobody reviews. This only becomes useful once the store
+# is a shared database (for example hosted Postgres). Until then the schedule below stays commented
+# out and the real daily run is deploy/crontab.
+name: daily-sync
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 11 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Run pipeline (proposes only; never writes to the CRM)
+        run: npm run pipeline
+        env:
+          CRM_API_BASE: ${{ secrets.CRM_API_BASE }}
+          CRM_TOKEN: ${{ secrets.CRM_TOKEN }}
