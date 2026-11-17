@@ -1,7 +1,7 @@
 # Bellhaven CRM Sync: architecture
 
 **Design:** `docs/superpowers/specs/2026-11-16-bellhaven-crm-sync-design.md`
-Status: Draft (revised after general and security review)
+Status: Approved 2026-11-16
 
 ## 1. Overview
 
