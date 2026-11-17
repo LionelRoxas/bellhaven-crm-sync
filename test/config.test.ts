@@ -19,4 +19,13 @@ describe('loadConfig', () => {
       expect((e as Error).message).not.toContain('secret123')
     }
   })
+  it('groqApiKey is null when unset or empty', () => {
+    expect(loadConfig({ CRM_API_BASE: 'x', CRM_TOKEN: 't' }).groqApiKey).toBeNull()
+    expect(loadConfig({ CRM_API_BASE: 'x', CRM_TOKEN: 't', GROQ_API_KEY: '' }).groqApiKey).toBeNull()
+    expect(loadConfig({ CRM_API_BASE: 'x', CRM_TOKEN: 't', GROQ_API_KEY: 'k' }).groqApiKey).toBe('k')
+  })
+  it('groqModel defaults and can be overridden', () => {
+    expect(loadConfig({ CRM_API_BASE: 'x', CRM_TOKEN: 't' }).groqModel).toBe('openai/gpt-oss-120b')
+    expect(loadConfig({ CRM_API_BASE: 'x', CRM_TOKEN: 't', GROQ_MODEL: 'm' }).groqModel).toBe('m')
+  })
 })
