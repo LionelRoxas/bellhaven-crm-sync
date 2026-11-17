@@ -1,6 +1,6 @@
 # Bellhaven CRM Sync: design
 
-Status: Draft
+Status: Approved 2026-11-16
 
 ## Intent
 
