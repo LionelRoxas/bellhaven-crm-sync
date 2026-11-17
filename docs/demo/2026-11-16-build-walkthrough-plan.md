@@ -1,6 +1,6 @@
 # Demo plan: Bellhaven CRM sync build walkthrough
 
-Status: Revision 8 (sales ops analyst framing: account hierarchy, revenue and AR terms, fix breakdown, safeguards), approved 2026-11-17
+Status: Revision 9 (AI-voice disclosure up front; reject shown on the local test copy, disclosed in narration; everything else from the real run), approved 2026-11-17
 
 ## Audience and takeaway
 - **Who:** anyone, including someone with no background in sales, CRMs or senior care, as well as the hiring team.
@@ -13,7 +13,7 @@ Status: Revision 8 (sales ops analyst framing: account hierarchy, revenue and AR
 ## Format
 - **Length:** 3 to 3½ minutes, at 1280x720. Revision 3's 9-minute cut was trimmed because the target is 2 minutes, with 3 at most.
 - **Captions:** burned in, plus a transcript (`.srt` and `.md`) delivered alongside the video.
-- **Narrator:** first person as Lionel, in an AI voice (ElevenLabs "Chris"). The video description discloses that the voiceover is AI-generated.
+- **Narrator:** an AI voice (ElevenLabs "Chris") that says in its first sentence it is an AI voice representing Lionel, then speaks for him in the first person.
 - **Role:** a companion to, not a replacement for, the brief's required ~2-minute recording, which is Lionel reviewing his real queue and talking live.
 
 ## Data and safety
@@ -30,7 +30,8 @@ Status: Revision 8 (sales ops analyst framing: account hierarchy, revenue and AR
 | matching | Willow Creek suggestion | Evidence: hover name, then street |
 | ai | Union Square suggestion | Evidence streets, then the "AI second opinion (advisory)" box |
 | chow | Tiffin suggestion | Ownership diagram, then the SOP box |
-| approve | Tiffin | Hover Reject, then click Approve; step log |
+| approve | Tiffin | Click Approve; step log |
+| reject | Test copy: Union Square suggestion | Type a reason, click Reject, show Rejected state |
 | crm | CRM browser: old Tiffin account, then the new one | Hover parent, revenue, CHOW link; open the new account |
 | duplicates | Kettering suggestion | "Why these accounts" (3 accounts), then the planned changes |
 | rerun | Queue | Click the Applied, then Rejected filters |
@@ -40,7 +41,7 @@ Status: Revision 8 (sales ops analyst framing: account hierarchy, revenue and AR
 
 ## Script
 
-**context1.** Hi, I'm Lionel. Let me start with the problem. About sixty percent of the long-term care facilities we sell to are owned by a parent company, and those facilities are bought, sold and rebranded all the time. For sales, the parent matters: contracts often need corporate sign-off, and outreach usually goes through the corporate office.
+**context1.** Hi, I'm an AI voice representing Lionel, walking you through his Bellhaven CRM sync. Let me start with the problem. About sixty percent of the long-term care facilities we sell to are owned by a parent company, and those facilities are bought, sold and rebranded all the time. For sales, the parent matters: contracts often need corporate sign-off, and outreach usually goes through the corporate office.
 
 **context2.** In the CRM, that relationship is the account hierarchy, where each facility account points to its parent account. When ownership changes, that link quietly breaks, and reps end up calling the wrong corporate office. Bellhaven's website lists the thirty-five communities it runs today, so I treat it as the source of truth and check it against our hundred and twenty-one accounts.
 
@@ -52,7 +53,9 @@ Status: Revision 8 (sales ops analyst framing: account hierarchy, revenue and AR
 
 **chow.** Tiffin is where the billing SOP comes in. It needs to move to Bellhaven, but it has eighty-four thousand dollars in lifetime revenue and twelve thousand four hundred in open AR, so billing needs the old account left exactly as it is. Instead of re-parenting it, the tool creates a new account under Bellhaven and sets the old account's CHOW field to point to the new one.
 
-**approve.** Reject sits right here and writes nothing, but every suggestion checked out today, so I won't reject any. When I click Approve, it checks the CRM once more, then makes each change in order and logs it.
+**approve.** When I click Approve, it checks the CRM once more, then makes each change in order and logs it.
+
+**reject.** Every real suggestion checked out and is already approved, so just to show you what Reject does, here it is on a test copy of the same data. I add a short reason and click Reject. Nothing is written to the CRM, and the decision is saved, so that suggestion won't come back.
 
 **crm.** And here's the change in the CRM itself. The old Tiffin account still sits under Cedar Trail with its sales history, and its CHOW field now points to the new account, which sits under Bellhaven.
 
