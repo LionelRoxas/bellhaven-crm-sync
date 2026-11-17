@@ -32,6 +32,7 @@ export class CrmError extends Error {
   status: number
   detail: string
   constructor(status: number, detail: string) {
+    detail = detail.slice(0, MAX_DETAIL)
     super(`CRM ${status}: ${detail}`)
     this.name = 'CrmError'
     this.status = status
@@ -50,12 +51,14 @@ export function assertAccountId(id: string): string {
 }
 
 const ATTEMPTS = 3
+const MAX_DETAIL = 300
+const DEFAULT_TIMEOUT_MS = 15000
 const PAGE_SIZE = 100
 const MAX_PAGES = 1000
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export function httpReader(
-  cfg: { crmApiBase: string; crmToken: string },
+  cfg: { crmApiBase: string; crmToken: string; timeoutMs?: number },
   fetchImpl: typeof fetch = fetch,
   sleep: (ms: number) => Promise<void> = defaultSleep,
 ): CrmReader {
@@ -70,6 +73,7 @@ export function httpReader(
         res = await fetchImpl(`${base}${path}`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${cfg.crmToken}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(cfg.timeoutMs ?? DEFAULT_TIMEOUT_MS),
         })
       } catch {
         last = new CrmError(0, 'network error')
@@ -104,13 +108,16 @@ export function httpReader(
   return {
     async listAccounts() {
       const out: Account[] = []
+      let total = 0
       for (let page = 1; page <= MAX_PAGES; page++) {
         const body = PageSchema.safeParse(await getJson(`/accounts?page=${page}&page_size=${PAGE_SIZE}`))
         if (!body.success) throw new CrmError(502, 'invalid page payload')
         for (const row of body.data.data) out.push(parseAccount(row))
-        if (out.length >= body.data.total || body.data.data.length === 0) return out
+        if (out.length >= body.data.total) return out
+        total = body.data.total
+        if (body.data.data.length === 0) break
       }
-      throw new CrmError(502, 'too many pages')
+      throw new CrmError(502, `Incomplete account list: got ${out.length} of ${total}`)
     },
     async getAccount(id) {
       return parseAccount(await getJson(`/accounts/${encodeURIComponent(assertAccountId(id))}`))

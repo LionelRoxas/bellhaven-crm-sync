@@ -90,4 +90,54 @@ describe('crm read client', () => {
   test('AccountSchema exported', () => {
     expect(AccountSchema.parse(acct(1)).name).toBe('A1')
   })
+
+  test('incomplete list (empty page before total) throws 502', async () => {
+    const f = vi.fn(async (u: string | URL | Request) => {
+      const page = Number(new URL(String(u)).searchParams.get('page'))
+      const data = page === 1 ? Array.from({ length: 100 }, (_, i) => acct(i)) : []
+      return json({ data, page, page_size: 100, total: 121 })
+    })
+    await expect(httpReader(cfg, f as unknown as typeof fetch, noSleep).listAccounts()).rejects.toMatchObject({
+      status: 502,
+      detail: 'Incomplete account list: got 100 of 121',
+    })
+  })
+
+  test('more than total is returned in full', async () => {
+    const f = vi.fn(async () => json({ data: Array.from({ length: 5 }, (_, i) => acct(i)), page: 1, page_size: 100, total: 3 }))
+    expect(await httpReader(cfg, f as unknown as typeof fetch, noSleep).listAccounts()).toHaveLength(5)
+  })
+
+  test('timeout aborts and is retried as a network error', async () => {
+    const signals: (AbortSignal | undefined)[] = []
+    const f = vi.fn((_u: string | URL | Request, init?: RequestInit) => {
+      signals.push(init?.signal ?? undefined)
+      return new Promise<Response>((_res, rej) => {
+        init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'TimeoutError')))
+      })
+    })
+    const err = await httpReader({ ...cfg, timeoutMs: 10 }, f as unknown as typeof fetch, noSleep)
+      .getAccount('001UXEM0PCSUVRAYPF').catch((e) => e)
+    expect(f).toHaveBeenCalledTimes(3)
+    expect(signals.every((s) => s !== undefined)).toBe(true)
+    expect(err).toBeInstanceOf(CrmError)
+  })
+
+  test('long detail truncated to 300 chars', async () => {
+    const f = vi.fn(async () => json({ detail: 'x'.repeat(1000) }, 404))
+    const err = await httpReader(cfg, f as unknown as typeof fetch, noSleep).getAccount('001UXEM0PCSUVRAYPF').catch((e) => e)
+    expect(err.detail).toHaveLength(300)
+  })
+
+  test('non-JSON 500 body uses statusText', async () => {
+    const f = vi.fn(async () => new Response('<html>oops</html>', { status: 500, statusText: 'Server Broke' }))
+    const err = await httpReader(cfg, f as unknown as typeof fetch, noSleep).getAccount('001UXEM0PCSUVRAYPF').catch((e) => e)
+    expect(err).toMatchObject({ status: 500, detail: 'Server Broke' })
+  })
+
+  test('invalid id never calls fetch', async () => {
+    const f = vi.fn(async (_u: string | URL | Request) => json(acct(1)))
+    await expect(httpReader(cfg, f as unknown as typeof fetch, noSleep).getAccount('../x')).rejects.toBeInstanceOf(CrmError)
+    expect(f).not.toHaveBeenCalled()
+  })
 })
