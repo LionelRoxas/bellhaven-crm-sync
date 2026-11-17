@@ -61,6 +61,18 @@ export type StepPatch = Partial<
   Pick<StepRow, 'status' | 'resultAccountId' | 'response' | 'error' | 'attemptedAt'>
 >
 
+export type TransitionExtra = {
+  comment?: string
+  decidedAt?: string
+  /** Extra conditions checked in the same UPDATE, so the check and the change are atomic. */
+  ifMatch?: {
+    fingerprint?: string
+    lastRun?: number
+    /** `decided_at` is NULL or strictly earlier than this ISO time. */
+    decidedBefore?: string
+  }
+}
+
 export type Db = {
   startRun(at?: Date): number
   finishRun(id: number, result: RunCounts | { error: string }, at?: Date): void
@@ -69,7 +81,7 @@ export type Db = {
   listProposals(f?: { type?: ProposalType; status?: Status }): ProposalRow[]
   getProposal(id: string): ProposalRow | null
   getSteps(id: string): StepRow[]
-  transition(id: string, from: Status[], to: Status, extra?: { comment?: string; decidedAt?: string }): boolean
+  transition(id: string, from: Status[], to: Status, extra?: TransitionExtra): boolean
   updateStep(proposalId: string, idx: number, patch: StepPatch): void
   lastRunInfo(): RunInfo | null
   close(): void
@@ -307,10 +319,25 @@ export function openDb(path: string): Db {
     transition(id, from, to, extra = {}) {
       if (from.length === 0) return false
       const marks = from.map(() => '?').join(',')
+      const conds: string[] = []
+      const condArgs: (string | number)[] = []
+      const m = extra.ifMatch ?? {}
+      if (m.fingerprint !== undefined) {
+        conds.push('fingerprint = ?')
+        condArgs.push(m.fingerprint)
+      }
+      if (m.lastRun !== undefined) {
+        conds.push('last_run = ?')
+        condArgs.push(m.lastRun)
+      }
+      if (m.decidedBefore !== undefined) {
+        conds.push('(decided_at IS NULL OR decided_at < ?)')
+        condArgs.push(m.decidedBefore)
+      }
       const r = q(
         `UPDATE proposals SET status = ?, comment = COALESCE(?, comment), decided_at = COALESCE(?, decided_at)
-         WHERE id = ? AND status IN (${marks})`,
-      ).run(to, extra.comment ?? null, extra.decidedAt ?? null, id, ...from)
+         WHERE id = ? AND status IN (${marks})${conds.map((c) => ` AND ${c}`).join('')}`,
+      ).run(to, extra.comment ?? null, extra.decidedAt ?? null, id, ...from, ...condArgs)
       return Number(r.changes) > 0
     },
 
